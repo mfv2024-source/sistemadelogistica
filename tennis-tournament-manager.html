@@ -1,0 +1,3713 @@
+<!Doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Torneos de Tenis</title>
+  <script>
+  // ============================================================
+  //  SDK conectado a api.php en Hostinger (MySQL)
+  //  Cambia API_URL si tu archivo está en una subcarpeta
+  // ============================================================
+  (function() {
+    const API_URL = 'api.php'; // Ruta relativa al archivo api.php
+
+    async function apiCall(method, action, body) {
+      try {
+        const opts = {
+          method,
+          headers: { 'Content-Type': 'application/json' }
+        };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API_URL + '?action=' + action, opts);
+        return await res.json();
+      } catch(e) {
+        console.error('API error:', e);
+        return { ok: false, error: e.message };
+      }
+    }
+
+    window.dataSdk = {
+      init: async function(handler) {
+        window._dataSdkHandler = handler;
+        const res = await apiCall('GET', 'getAll');
+        const data = res.data || [];
+        if (handler && handler.onDataChanged) handler.onDataChanged(data);
+        return { isOk: true };
+      },
+      create: async function(record) {
+        const id = record.id || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        record.id = id; record.__backendId = id;
+        const res = await apiCall('POST', 'create', record);
+        if (res.ok !== false) {
+          const all = await apiCall('GET', 'getAll');
+          if (window._dataSdkHandler) window._dataSdkHandler.onDataChanged(all.data || []);
+        }
+        return { isOk: res.ok !== false };
+      },
+      update: async function(record) {
+        const res = await apiCall('PUT', 'update', record);
+        if (res.ok !== false) {
+          const all = await apiCall('GET', 'getAll');
+          if (window._dataSdkHandler) window._dataSdkHandler.onDataChanged(all.data || []);
+        }
+        return { isOk: res.ok !== false };
+      },
+      delete: async function(record) {
+        const res = await apiCall('DELETE', 'delete', { id: record.id });
+        if (res.ok !== false) {
+          const all = await apiCall('GET', 'getAll');
+          if (window._dataSdkHandler) window._dataSdkHandler.onDataChanged(all.data || []);
+        }
+        return { isOk: res.ok !== false };
+      }
+    };
+
+    window.elementSdk = {
+      config: {
+        background_color: '#ffffff', surface_color: '#e5e7eb', text_color: '#000000',
+        primary_action_color: '#3b82f6', secondary_action_color: '#64748b',
+        font_family: 'Inter', font_size: 16,
+        app_title: 'Sistema de Torneos de Tenis',
+        tournament_1_name: 'Masters 2026', tournament_2_name: 'Torneo Apertura',
+        tournament_3_name: 'Clausura', tournament_4_name: 'Asunción 1 Etapa',
+        tournament_5_name: 'Toluca', tournament_6_name: 'Asunción 2 Etapa',
+        tournament_7_name: 'Masters 2025', group_a_name: 'Grupo A', group_b_name: 'Grupo B'
+      },
+      init: function(opts) {
+        if (opts && opts.defaultConfig) window.elementSdk.config = { ...opts.defaultConfig, ...window.elementSdk.config };
+      },
+      setConfig: function(partial) { window.elementSdk.config = { ...window.elementSdk.config, ...partial }; }
+    };
+  })();
+  </script>
+
+  <style>
+    body {
+      box-sizing: border-box;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    @keyframes slideInFromTop {
+      from { transform: translateY(-100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .validation-alert {
+      animation: slideInFromTop 0.5s ease-out, pulse 2s ease-in-out infinite;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="https://cdn.tailwindcss.com/3.4.17" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js" type="text/javascript"></script>
+<base target="_blank">
+<base target="_blank">
+</head>
+<body class="min-h-full">
+  <div id="app" class="min-h-full"></div>
+
+  <!-- Admin Login Modal -->
+  <div id="admin-login-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#1e293b; border-radius:16px; padding:36px; max-width:380px; width:90%; box-shadow:0 25px 60px rgba(0,0,0,0.5); border:1px solid #334155;">
+      <div style="text-align:center; margin-bottom:24px;">
+        <div style="font-size:48px; margin-bottom:8px;">🔑</div>
+        <h2 style="color:#f1f5f9; font-size:20px; font-weight:700; margin:0 0 6px;">Acceso de Administrador</h2>
+        <p style="color:#94a3b8; font-size:14px; margin:0;">Ingresa la contraseña para editar</p>
+      </div>
+      <input id="admin-password-input" type="password" placeholder="Contraseña de administrador"
+        style="width:100%; background:#0f172a; color:#f1f5f9; border:2px solid #475569; border-radius:8px; padding:12px 16px; font-size:15px; margin-bottom:8px; outline:none; box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter') attemptAdminLogin()">
+      <div id="admin-login-error" style="display:none; color:#ef4444; font-size:13px; margin-bottom:10px; text-align:center;">❌ Contraseña incorrecta. Intenta de nuevo.</div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button onclick="hideAdminLoginModal()"
+          style="flex:1; background:#334155; color:#f1f5f9; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:600; cursor:pointer;">
+          Cancelar
+        </button>
+        <button onclick="attemptAdminLogin()"
+          style="flex:1; background:#7c3aed; color:white; border:none; border-radius:8px; padding:12px; font-size:14px; font-weight:700; cursor:pointer;">
+          Ingresar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const defaultConfig = {
+      background_color: '#ffffff',
+      surface_color: '#e5e7eb',
+      text_color: '#000000',
+      primary_action_color: '#3b82f6',
+      secondary_action_color: '#64748b',
+      font_family: 'Inter',
+      font_size: 16,
+      app_title: 'Sistema de Torneos de Tenis',
+      tournament_1_name: 'Masters 2026',
+      tournament_2_name: 'Torneo Apertura',
+      tournament_3_name: 'Clausura',
+      tournament_4_name: 'Asunción 1 Etapa',
+      tournament_5_name: 'Toluca',
+      tournament_6_name: 'Asunción 2 Etapa',
+      tournament_7_name: 'Masters 2025',
+      group_a_name: 'Grupo A',
+      group_b_name: 'Grupo B'
+    };
+
+    let currentView = 'menu';
+    let currentTournament = null;
+    let selectedPlayerId = null;
+    let playerSearchQuery = '';
+    // Brackets — guardados en MySQL vía dataSdk (un registro por torneo)
+    var bracketData = {};
+    var allBracketRecords = []; // poblado desde dataHandler
+    function buildBracketsFromAPI(data) {
+      const records = data.filter(r => r.type === 'bracket_data');
+      allBracketRecords = records;
+      bracketData = {};
+      records.forEach(r => {
+        try { bracketData[r.tournament_id] = JSON.parse(r.data); } catch(e) {}
+      });
+    }
+    async function saveBrackets(b, tid) {
+      const payload = { type: 'bracket_data', tournament_id: tid, data: JSON.stringify(b[tid]) };
+      const existing = allBracketRecords.find(r => r.tournament_id === tid);
+      if (existing) {
+        await window.dataSdk.update({ ...existing, ...payload });
+      } else {
+        await window.dataSdk.create({ id: 'bracket-' + tid, ...payload, created_at: new Date().toISOString() });
+      }
+    }
+    // ── Admin Auth ──
+    var isAdminLoggedIn = false;
+    var pendingRankingChanges = {}; // cambios no guardados en modo admin
+    const ADMIN_PASSWORD = 'admin2026'; // Cambia esta contraseña
+
+    function showAdminLoginModal() {
+      const modal = document.getElementById('admin-login-modal');
+      if (modal) { modal.style.display = 'flex'; document.getElementById('admin-password-input').focus(); }
+    }
+    function hideAdminLoginModal() {
+      const modal = document.getElementById('admin-login-modal');
+      if (modal) { modal.style.display = 'none'; document.getElementById('admin-password-input').value = ''; document.getElementById('admin-login-error').style.display = 'none'; }
+    }
+    function attemptAdminLogin() {
+      const input = document.getElementById('admin-password-input');
+      if (input && input.value === ADMIN_PASSWORD) {
+        isAdminLoggedIn = true;
+        hideAdminLoginModal();
+        render();
+      } else {
+        const err = document.getElementById('admin-login-error');
+        if (err) err.style.display = 'block';
+        if (input) input.value = '';
+      }
+    }
+    async function adminLogout() {
+      if (Object.keys(pendingRankingChanges).length > 0) {
+        const save = confirm('Tienes cambios sin guardar en el ranking.\n\n¿Deseas guardar los cambios antes de salir?');
+        if (save) {
+          await saveAllRankingChanges();
+        } else {
+          // Revert pending changes from memory
+          Object.keys(pendingRankingChanges).forEach(playerName => {
+            const original = allRankingOverrides.find(r => r.player_name === playerName);
+            if (original) {
+              manualRankingOrder[playerName] = {
+                pos: original.pos, utr: original.utr, pts: original.pts,
+                pj: original.pj, pg: original.pg, pp: original.pp,
+                sg: original.sg, sp: original.sp, ef: original.ef
+              };
+            } else {
+              delete manualRankingOrder[playerName];
+            }
+          });
+          pendingRankingChanges = {};
+        }
+      }
+      isAdminLoggedIn = false;
+      render();
+    }
+
+    async function saveAllRankingChanges() {
+      console.log('[RANKING] saveAllRankingChanges INICIADO');
+      // Limpiar entradas basura antes de guardar
+      if (pendingRankingChanges['${safeName}']) {
+        console.log('[RANKING] Eliminando entrada basura ${safeName}');
+        delete pendingRankingChanges['${safeName}'];
+      }
+      const playerNames = Object.keys(pendingRankingChanges);
+      console.log('[RANKING] Jugadores con cambios:', playerNames);
+      if (playerNames.length === 0) {
+        console.log('[RANKING] No hay cambios, saliendo');
+        return;
+      }
+      const rankFields = ['pos', 'utr', 'pts', 'pj', 'pg', 'pp', 'sg', 'sp', 'ef'];
+      let successCount = 0;
+      let errorCount = 0;
+      for (const playerName of playerNames) {
+        // IGNORAR entradas basura
+        if (playerName === '${safeName}') {
+          console.log('[RANKING] IGNORANDO jugador basura:', playerName);
+          continue;
+        }
+        const existing = allRankingOverrides.find(r => r.player_name === playerName);
+        const pending = pendingRankingChanges[playerName] || {};
+        const merged = {};
+        // Solo guardar campos que el admin editó EXPLÍCITAMENTE en esta sesión (pending)
+        // Esto evita que posiciones viejas "congelen" el orden cuando solo se editan puntos
+        Object.keys(pending).forEach(f => {
+          if (pending[f] !== undefined && pending[f] !== null && pending[f] !== '') merged[f] = pending[f];
+        });
+        console.log('[RANKING] Guardando', playerName, 'existing:', !!existing, 'merged:', merged);
+        try {
+          let result;
+          if (existing) {
+            result = await window.dataSdk.update({ ...existing, ...merged });
+            console.log('[RANKING] Update resultado para', playerName, ':', result);
+          } else {
+            result = await window.dataSdk.create({
+              id: 'rank-' + Date.now() + '-' + Math.random().toString(36).slice(2),
+              type: 'ranking_override',
+              player_name: playerName,
+              ...merged,
+              created_at: new Date().toISOString()
+            });
+            console.log('[RANKING] Create resultado para', playerName, ':', result);
+          }
+          if (result && result.isOk) {
+            successCount++;
+            console.log('[RANKING] ÉXITO guardando', playerName);
+          } else {
+            errorCount++;
+            console.error('[RANKING] FALLO guardando', playerName, 'resultado:', result);
+          }
+        } catch (e) {
+          console.error('[RANKING] ERROR guardando', playerName, e);
+          errorCount++;
+        }
+      }
+      console.log('[RANKING] Guardado completado. Éxitos:', successCount, 'Errores:', errorCount);
+      pendingRankingChanges = {};
+      if (errorCount === 0) {
+        showMessage('Cambios del ranking guardados correctamente', 'success');
+      } else {
+        showMessage('Error al guardar ' + errorCount + ' cambios. Revisa la consola.', 'error');
+      }
+      render();
+    }
+
+    // ── Leyenda editable — guardada en MySQL ──
+    var defaultLegendItems = [
+      { key: 'utr', label: 'UTR', desc: 'Universal Tennis Rating (0-10)', color: '#f59e0b' },
+      { key: 'pts', label: 'PTS', desc: 'Suma automática de todos los torneos (MySQL en vivo)', color: null },
+      { key: 'pj',  label: 'PJ',  desc: 'Partidos Jugados', color: null },
+      { key: 'pg',  label: 'PG',  desc: 'Partidos Ganados', color: null },
+      { key: 'pp',  label: 'PP',  desc: 'Partidos Perdidos', color: null },
+      { key: 'sg',  label: 'SG',  desc: 'Sets Ganados', color: null },
+      { key: 'sp',  label: 'SP',  desc: 'Sets Perdidos', color: null },
+      { key: 'ef',  label: 'EF%', desc: 'Eficiencia', color: null }
+    ];
+    var legendItems = defaultLegendItems.map(i => ({ ...i }));
+    var pendingLegendChanges = {}; // key -> {label, desc}
+    var editingLegend = false;
+    var allLegendOverrides = [];
+
+    function buildLegendFromAPI(data) {
+      allLegendOverrides = data.filter(r => r.type === 'legend_override');
+      legendItems = defaultLegendItems.map(def => {
+        const ovr = allLegendOverrides.find(r => r.key === def.key);
+        return ovr ? { ...def, label: ovr.label, desc: ovr.desc } : { ...def };
+      });
+    }
+
+    function startEditLegend(e) { e && e.stopPropagation(); editingLegend = true; render(); }
+    function cancelEditLegend() { editingLegend = false; pendingLegendChanges = {}; render(); }
+
+    function updatePendingLegend(key, field, value) {
+      if (!pendingLegendChanges[key]) pendingLegendChanges[key] = {};
+      pendingLegendChanges[key][field] = value;
+    }
+
+    async function saveLegendChanges() {
+      // Apply pending to legendItems in memory
+      Object.keys(pendingLegendChanges).forEach(key => {
+        const item = legendItems.find(i => i.key === key);
+        if (item) {
+          if (pendingLegendChanges[key].label !== undefined) item.label = pendingLegendChanges[key].label;
+          if (pendingLegendChanges[key].desc  !== undefined) item.desc  = pendingLegendChanges[key].desc;
+        }
+      });
+      // Persist each changed key to MySQL
+      for (const key of Object.keys(pendingLegendChanges)) {
+        const item = legendItems.find(i => i.key === key);
+        if (!item) continue;
+        const existing = allLegendOverrides.find(r => r.key === key);
+        if (existing) {
+          await window.dataSdk.update({ ...existing, label: item.label, desc: item.desc });
+        } else {
+          const newRec = {
+            id: 'legend-' + key + '-' + Date.now(),
+            type: 'legend_override',
+            key: key,
+            label: item.label,
+            desc: item.desc,
+            created_at: new Date().toISOString()
+          };
+          await window.dataSdk.create(newRec);
+          allLegendOverrides.push(newRec);
+        }
+      }
+      pendingLegendChanges = {};
+      editingLegend = false;
+      showMessage('Leyenda guardada correctamente', 'success');
+      render();
+    }
+
+    async function resetLegend() {
+      if (!confirm('¿Restablecer la leyenda a los valores originales?')) return;
+      for (const rec of allLegendOverrides) { await window.dataSdk.delete(rec); }
+      allLegendOverrides = [];
+      legendItems = defaultLegendItems.map(i => ({ ...i }));
+      pendingLegendChanges = {};
+      editingLegend = false;
+      showMessage('Leyenda restablecida', 'success');
+      render();
+    }
+
+    // ── Ranking overrides — guardados en MySQL via dataSdk ──
+    var manualRankingOrder = {}; // { playerName: { pos, utr, pts, pj, pg, pp, sg, sp, ef } }
+    var allRankingOverrides = []; // populated from dataHandler
+
+    function buildManualRankingFromAPI(data) {
+      const overrides = data.filter(r => r.type === 'ranking_override');
+      console.log('[RANKING] buildManualRankingFromAPI: overrides encontrados:', overrides.length);
+      allRankingOverrides = overrides;
+      manualRankingOrder = {};
+      const rankFields = ['pos', 'utr', 'pts', 'pj', 'pg', 'pp', 'sg', 'sp', 'ef'];
+      overrides.forEach(r => {
+        if (r.player_name === '${safeName}') {
+          console.log('[RANKING] IGNORANDO entrada basura:', r.id || r.__backendId);
+          return;
+        }
+        const entry = {};
+        rankFields.forEach(f => {
+          if (r[f] !== undefined && r[f] !== null && r[f] !== '') entry[f] = r[f];
+        });
+        if (Object.keys(entry).length > 0) {
+          manualRankingOrder[r.player_name] = entry;
+          console.log('[RANKING] Cargado override para', r.player_name, ':', entry);
+        }
+      });
+      console.log('[RANKING] manualRankingOrder completo:', JSON.parse(JSON.stringify(manualRankingOrder)));
+      Object.keys(pendingRankingChanges).forEach(playerName => {
+        if (playerName === '${safeName}') return;
+        if (!manualRankingOrder[playerName]) manualRankingOrder[playerName] = {};
+        Object.assign(manualRankingOrder[playerName], pendingRankingChanges[playerName]);
+      });
+    }
+
+    function getRankingOverrideValue(ovr, field, autoValue) {
+      if (!ovr || ovr[field] === undefined || ovr[field] === null || ovr[field] === '') return autoValue;
+      return ovr[field];
+    }
+
+    var dragSrcIndex = null;
+
+    // ── Fotos de torneos — archivo físico en uploads/, URL guardada en MySQL ──
+    var allTournamentPhotos = []; // poblado desde dataHandler
+
+    function getTournamentPhoto(tid) {
+      const rec = allTournamentPhotos.find(p => p.tournament_id === tid);
+      return rec ? rec.photo_url : '';
+    }
+
+    async function setTournamentPhotoUrl(tid, url) {
+      const existing = allTournamentPhotos.find(p => p.tournament_id === tid);
+      if (existing) {
+        await window.dataSdk.update({ ...existing, photo_url: url });
+      } else {
+        await window.dataSdk.create({
+          id: 'tphoto-' + tid + '-' + Date.now(),
+          type: 'tournament_photo',
+          tournament_id: tid,
+          photo_url: url,
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+
+    async function removeTournamentPhoto(tid) {
+      const existing = allTournamentPhotos.find(p => p.tournament_id === tid);
+      if (!existing) return;
+      // Borrar archivo del servidor
+      try {
+        await fetch('api.php?action=deletePhoto', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo_url: existing.photo_url })
+        });
+      } catch(e) {}
+      await window.dataSdk.delete(existing);
+    }
+
+    async function handleTournamentPhotoUpload(tid, event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      showMessage('Subiendo foto...', 'success');
+
+      // Redimensionar a máx 900px antes de enviar
+      const MAX_PX = 900;
+      const bitmap = await createImageBitmap(file).catch(() => null);
+
+      let blob = file;
+      if (bitmap) {
+        let w = bitmap.width, h = bitmap.height;
+        if (w > MAX_PX || h > MAX_PX) {
+          if (w > h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
+          else       { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+        blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.82));
+      }
+
+      const formData = new FormData();
+      formData.append('photo', blob, 'tournament_' + tid + '_' + Date.now() + '.jpg');
+      formData.append('tournament_id', tid);
+
+      try {
+        const res = await fetch('api.php?action=uploadPhoto', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (json.ok && json.url) {
+          await setTournamentPhotoUrl(tid, json.url);
+          showMessage('Foto guardada correctamente', 'success');
+        } else {
+          showMessage('Error al subir la foto: ' + (json.error || 'desconocido'), 'error');
+        }
+      } catch(e) {
+        showMessage('Error de red al subir la foto', 'error');
+      }
+    }
+    // Configuración de clasificación — guardada en MySQL vía dataSdk (registro único)
+    var qualifySettings = {};
+    var qualifySettingsRecord = null; // registro actual desde la API, o null si aún no existe
+    function buildQualifySettingsFromAPI(data) {
+      const rec = data.find(r => r.type === 'qualify_settings_data');
+      qualifySettingsRecord = rec || null;
+      qualifySettings = {};
+      if (rec && rec.data) {
+        try { qualifySettings = JSON.parse(rec.data); } catch(e) {}
+      }
+    }
+    async function persistQualifySettings() {
+      const payload = { type: 'qualify_settings_data', data: JSON.stringify(qualifySettings) };
+      if (qualifySettingsRecord) {
+        await window.dataSdk.update({ ...qualifySettingsRecord, ...payload });
+      } else {
+        await window.dataSdk.create({ id: 'qualify-settings-singleton', ...payload, created_at: new Date().toISOString() });
+      }
+    }
+    function getQualifyCount(tid, group) {
+      var key = tid + '_' + group;
+      return qualifySettings[key] !== undefined ? qualifySettings[key] : 2;
+    }
+    function setQualifyCount(tid, group, val) {
+      var key = tid + '_' + group;
+      qualifySettings[key] = parseInt(val) || 1;
+      persistQualifySettings();
+      render();
+    }
+    function getBracket(tid) {
+      if (!bracketData[tid]) bracketData[tid]={prevRounds:[],octavos:Array(16).fill(''),cuartos:Array(8).fill(''),semis:Array(4).fill(''),final:Array(2).fill(''),campeon:''};
+      if (!bracketData[tid].prevRounds) bracketData[tid].prevRounds=[];
+      return bracketData[tid];
+    }
+    function addPrevRound(tid) {
+      var b=getBracket(tid);
+      var num=b.prevRounds.length+1;
+      b.prevRounds.push({label: num+'a RONDA', slots: Array(16).fill('')});
+      saveBrackets(bracketData, tid); render();
+    }
+    function removePrevRound(tid, roundIdx) {
+      var b=getBracket(tid);
+      b.prevRounds.splice(roundIdx,1);
+      saveBrackets(bracketData, tid); render();
+    }
+    function setPrevRoundSlot(tid, roundIdx, slotIdx, value) {
+      var b=getBracket(tid);
+      b.prevRounds[roundIdx].slots[slotIdx]=value;
+      saveBrackets(bracketData, tid); render();
+    }
+    function setPrevRoundLabel(tid, roundIdx, value) {
+      var b=getBracket(tid);
+      b.prevRounds[roundIdx].label=value;
+      saveBrackets(bracketData, tid); render();
+    }
+    function setBracketSlot(tid, ronda, idx, value) {
+      var b=getBracket(tid);
+      if(ronda==='campeon') b.campeon=value; else b[ronda][idx]=value;
+      saveBrackets(bracketData, tid); render();
+    }
+    async function resetBracket(tid) {
+      if(!confirm('¿Limpiar todo el bracket?')) return;
+      delete bracketData[tid];
+      const existing = allBracketRecords.find(r => r.tournament_id === tid);
+      if (existing) { await window.dataSdk.delete(existing); }
+      render();
+    }
+
+    let allPlayers = [];
+    let allMatches = [];
+    let allPlayerProfiles = [];
+    let hiddenBaseTournaments = []; // IDs de torneos base (tournament1..7) eliminados por el usuario
+    let recordCount = 0;
+
+    const dataHandler = {
+      onDataChanged(data) {
+        recordCount = data.length;
+
+        allPlayers = data.filter(record => record.type === 'player');
+        allMatches = data.filter(record => record.type === 'match');
+        allPlayerProfiles = data.filter(record => record.type === 'player_profile');
+        allTournamentPhotos = data.filter(record => record.type === 'tournament_photo');
+        hiddenBaseTournaments = data.filter(record => record.type === 'hidden_base_tournament').map(r => r.tournament_id);
+        // Fusionar torneos custom desde MySQL (tabla + registros)
+        const fromRecords = data
+          .filter(record => record.type === 'custom_tournament')
+          .map(r => ({ id: r.tournament_id || r.id, name: r.name, isCustom: true }));
+        const byId = new Map(customTournaments.map(t => [t.id, t]));
+        fromRecords.forEach(t => byId.set(t.id, t));
+        customTournaments = Array.from(byId.values());
+
+        buildManualRankingFromAPI(data);
+        buildTournamentNamesFromAPI(data);
+        buildLegendFromAPI(data);
+        buildBracketsFromAPI(data);
+        buildQualifySettingsFromAPI(data);
+        buildTournamentSettingsFromAPI(data);
+
+        render();
+      }
+    };
+
+    async function init() {
+      const result = await window.dataSdk.init(dataHandler);
+      if (!result.isOk) {
+        console.error('Error al inicializar el SDK');
+      }
+    }
+
+    // Cupos y número de grupos por torneo — guardados en MySQL vía dataSdk (registro único)
+    let tournamentSettings = {
+      tournament7_max: 10,
+      tournament7_groups: 2,
+      tournament1_max: 10,
+      tournament1_groups: 2,
+      tournament2_max: 10,
+      tournament2_groups: 2,
+      tournament3_max: 10,
+      tournament3_groups: 2,
+      tournament4_max: 10,
+      tournament4_groups: 2,
+      tournament5_max: 10,
+      tournament5_groups: 2,
+      tournament6_max: 10,
+      tournament6_groups: 2
+    };
+    let tournamentSettingsRecord = null; // registro actual desde la API, o null si aún no existe
+    function buildTournamentSettingsFromAPI(data) {
+      const rec = data.find(r => r.type === 'tournament_settings_data');
+      tournamentSettingsRecord = rec || null;
+      if (rec && rec.data) {
+        try { tournamentSettings = Object.assign({}, tournamentSettings, JSON.parse(rec.data)); } catch(e) {}
+      }
+    }
+    async function persistTournamentSettings() {
+      const payload = { type: 'tournament_settings_data', data: JSON.stringify(tournamentSettings) };
+      if (tournamentSettingsRecord) {
+        await window.dataSdk.update({ ...tournamentSettingsRecord, ...payload });
+      } else {
+        await window.dataSdk.create({ id: 'tournament-settings-singleton', ...payload, created_at: new Date().toISOString() });
+      }
+    }
+
+    // Torneos personalizados — api.php (MySQL: custom_tournaments + torneo_data)
+    let customTournaments = [];
+    async function loadCustomTournamentsFromAPI() {
+      try {
+        const res = await fetch('api.php?action=getCustomTournaments');
+        const json = await res.json();
+        customTournaments = (json.data || []).map(t => ({
+          id: t.id,
+          name: t.name,
+          isCustom: true
+        }));
+      } catch (e) {
+        customTournaments = [];
+      }
+    }
+    async function saveCustomTournamentToAPI(t) {
+      await fetch('api.php?action=createTournament', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: t.id, name: t.name })
+      });
+      // Refrescar datos para que el ranking tome el torneo nuevo
+      const all = await fetch('api.php?action=getAll').then(r => r.json()).catch(() => ({ data: [] }));
+      if (window._dataSdkHandler && window._dataSdkHandler.onDataChanged) {
+        window._dataSdkHandler.onDataChanged(all.data || []);
+      }
+    }
+    async function deleteCustomTournamentFromAPI(id) {
+      await fetch('api.php?action=deleteTournament', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const all = await fetch('api.php?action=getAll').then(r => r.json()).catch(() => ({ data: [] }));
+      if (window._dataSdkHandler && window._dataSdkHandler.onDataChanged) {
+        window._dataSdkHandler.onDataChanged(all.data || []);
+      }
+    }
+
+    // ── Nombres de torneos editables — guardados en MySQL ──
+    var allTournamentNameOverrides = []; // tipo: tournament_name_override
+    var editingTournamentNameId = null; // id del torneo cuyo nombre se está editando
+
+    function buildTournamentNamesFromAPI(data) {
+      allTournamentNameOverrides = data.filter(r => r.type === 'tournament_name_override');
+      // Aplicar nombres guardados al config
+      allTournamentNameOverrides.forEach(rec => {
+        const configKey = rec.config_key;
+        if (configKey) {
+          window.elementSdk.config[configKey] = rec.name;
+          defaultConfig[configKey] = rec.name;
+        }
+        // Para torneos custom, actualizar en customTournaments array
+        if (rec.is_custom && rec.tournament_id) {
+          const ct = customTournaments.find(t => t.id === rec.tournament_id);
+          if (ct) ct.name = rec.name;
+        }
+      });
+    }
+
+    function getTournamentConfigKey(tid) {
+      const map = {
+        'tournament1': 'tournament_1_name',
+        'tournament2': 'tournament_2_name',
+        'tournament3': 'tournament_3_name',
+        'tournament4': 'tournament_4_name',
+        'tournament5': 'tournament_5_name',
+        'tournament6': 'tournament_6_name',
+        'tournament7': 'tournament_7_name',
+      };
+      return map[tid] || null;
+    }
+
+    function startEditTournamentName(tid, event) {
+      event.stopPropagation();
+      editingTournamentNameId = tid;
+      render();
+      setTimeout(() => {
+        const inp = document.getElementById('edit-tname-' + tid);
+        if (inp) { inp.focus(); inp.select(); }
+      }, 30);
+    }
+
+    function cancelEditTournamentName() {
+      editingTournamentNameId = null;
+      render();
+    }
+
+    async function saveTournamentName(tid, newName) {
+      newName = newName.trim();
+      if (!newName) { cancelEditTournamentName(); return; }
+      editingTournamentNameId = null;
+
+      const configKey = getTournamentConfigKey(tid);
+      const isCustom = !configKey;
+
+      // Update in memory
+      if (configKey) {
+        window.elementSdk.config[configKey] = newName;
+        defaultConfig[configKey] = newName;
+      } else {
+        // custom tournament
+        const ct = customTournaments.find(t => t.id === tid);
+        if (ct) ct.name = newName;
+      }
+
+      // Persist to MySQL
+      const existing = allTournamentNameOverrides.find(r => r.tournament_id === tid);
+      if (existing) {
+        await window.dataSdk.update({ ...existing, name: newName });
+      } else {
+        await window.dataSdk.create({
+          id: 'tname-' + tid + '-' + Date.now(),
+          type: 'tournament_name_override',
+          tournament_id: tid,
+          config_key: configKey || null,
+          is_custom: isCustom,
+          name: newName,
+          created_at: new Date().toISOString()
+        });
+      }
+      render();
+    }
+
+    const playersGroupA = [];
+    const playersGroupB = [];
+
+    function getTournaments() {
+      const base = [
+        { id: 'tournament7', name: window.elementSdk.config.tournament_7_name || defaultConfig.tournament_7_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament7_max || 10, groupCount: tournamentSettings.tournament7_groups || 2 },
+        { id: 'tournament2', name: window.elementSdk.config.tournament_2_name || defaultConfig.tournament_2_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament2_max || 10, groupCount: tournamentSettings.tournament2_groups || 2 },
+        { id: 'tournament3', name: window.elementSdk.config.tournament_3_name || defaultConfig.tournament_3_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament3_max || 10, groupCount: tournamentSettings.tournament3_groups || 2 },
+        { id: 'tournament4', name: window.elementSdk.config.tournament_4_name || defaultConfig.tournament_4_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament4_max || 10, groupCount: tournamentSettings.tournament4_groups || 2 },
+        { id: 'tournament5', name: window.elementSdk.config.tournament_5_name || defaultConfig.tournament_5_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament5_max || 10, groupCount: tournamentSettings.tournament5_groups || 2 },
+        { id: 'tournament6', name: window.elementSdk.config.tournament_6_name || defaultConfig.tournament_6_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament6_max || 10, groupCount: tournamentSettings.tournament6_groups || 2 },
+        { id: 'tournament1', name: window.elementSdk.config.tournament_1_name || defaultConfig.tournament_1_name, hasGroups: true, maxPlayersPerGroup: tournamentSettings.tournament1_max || 10, groupCount: tournamentSettings.tournament1_groups || 2 }
+      ].filter(t => !hiddenBaseTournaments.includes(t.id));
+      const custom = customTournaments.map(t => ({
+        id: t.id,
+        name: t.name,
+        hasGroups: true,
+        maxPlayersPerGroup: tournamentSettings[t.id + '_max'] || 10,
+        groupCount: tournamentSettings[t.id + '_groups'] || 2,
+        isCustom: true
+      }));
+      return [...base, ...custom];
+    }
+
+    function getTournamentPlayers(tournamentId, group = null) {
+      let players = allPlayers.filter(p => p.tournament_id === tournamentId);
+      if (group) {
+        players = players.filter(p => p.group === group);
+      }
+      return players;
+    }
+
+    function getTournamentMatches(tournamentId) {
+      return allMatches.filter(m => m.tournament_id === tournamentId);
+    }
+
+    function namesMatch(a, b) {
+      return String(a || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        === String(b || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function getPlayerProfile(playerName) {
+      return allPlayerProfiles.find(p => namesMatch(p.player_name, playerName));
+    }
+
+    function isRecordValidated(record) {
+      const v = record.validated;
+      if (v === false || v === 0 || v === '0' || v === 'false') return false;
+      if (v === true || v === 1 || v === '1' || v === 'true') return true;
+      if (isRecordPendingValidation(record)) return false;
+      return parseSetsCount(record.sets_won) !== null
+        && parseSetsCount(record.sets_lost) !== null
+        && !!record.winner;
+    }
+
+    function isRecordPendingValidation(record) {
+      const v = record.pending_validation;
+      return v === true || v === 1 || v === '1' || v === 'true';
+    }
+
+    function parseSetsCount(value) {
+      if (value === undefined || value === null || value === '') return null;
+      const n = parseInt(value, 10);
+      return isNaN(n) ? null : n;
+    }
+
+    function getTournamentDisplayName(tid) {
+      const listed = getTournaments().find(t => t.id === tid);
+      if (listed) return listed.name;
+      const custom = customTournaments.find(t => t.id === tid);
+      if (custom) return custom.name;
+      const override = allTournamentNameOverrides.find(r => r.tournament_id === tid);
+      if (override && override.name) return override.name;
+      return tid;
+    }
+
+    function getRankingTournamentColumns() {
+      const seen = new Set();
+      const columns = [];
+      getTournaments().forEach(t => {
+        if (seen.has(t.id)) return;
+        seen.add(t.id);
+        columns.push({ id: t.id, name: t.name });
+      });
+      allMatches.forEach(m => {
+        if (!m.tournament_id || seen.has(m.tournament_id)) return;
+        seen.add(m.tournament_id);
+        columns.push({ id: m.tournament_id, name: getTournamentDisplayName(m.tournament_id) });
+      });
+      return columns;
+    }
+
+    function getMatchContribution(match, playerName) {
+      if (!isRecordValidated(match)) return null;
+      if (!match.winner) return null;
+      if (!namesMatch(match.player1, playerName) && !namesMatch(match.player2, playerName)) return null;
+
+      const winnerSets = parseSetsCount(match.sets_won);
+      const loserSets = parseSetsCount(match.sets_lost);
+      if (winnerSets === null || loserSets === null) return null;
+
+      const isWinner = namesMatch(match.winner, playerName);
+      const setsWon = isWinner ? winnerSets : loserSets;
+      const setsLost = isWinner ? loserSets : winnerSets;
+      let points = 0;
+      if (isWinner) {
+        points = (setsWon === 2 && setsLost === 0) ? 3 : 2;
+      } else if (setsWon === 1 && setsLost === 2) {
+        points = 1;
+      }
+
+      const opponent = namesMatch(match.player1, playerName) ? match.player2 : match.player1;
+      const matchDate = match.created_at ? new Date(match.created_at) : new Date();
+      return { isWinner, setsWon, setsLost, points, opponent, matchDate, match };
+    }
+
+    function computePlayerRankingStats(playerName) {
+      let totalPoints = 0;
+      let totalWins = 0;
+      let totalLosses = 0;
+      let totalSetsWon = 0;
+      let totalSetsLost = 0;
+      const contributions = [];
+      const pointsByTournament = {};
+
+      // Suma automática de TODOS los torneos (anteriores y nuevos) desde MySQL
+      allMatches.forEach(match => {
+        const contribution = getMatchContribution(match, playerName);
+        if (!contribution) return;
+        contributions.push(contribution);
+        totalSetsWon += contribution.setsWon;
+        totalSetsLost += contribution.setsLost;
+        totalPoints += contribution.points;
+        if (contribution.isWinner) totalWins++;
+        else totalLosses++;
+        const tid = match.tournament_id || 'sin-torneo';
+        pointsByTournament[tid] = (pointsByTournament[tid] || 0) + contribution.points;
+      });
+
+      const totalMatches = totalWins + totalLosses;
+      const efficiency = totalMatches > 0 ? parseFloat(((totalWins / totalMatches) * 100).toFixed(1)) : 0;
+
+      return {
+        points: totalPoints,
+        wins: totalWins,
+        losses: totalLosses,
+        setsWon: totalSetsWon,
+        setsLost: totalSetsLost,
+        matchesPlayed: totalMatches,
+        efficiency,
+        contributions,
+        pointsByTournament
+      };
+    }
+
+    function calculateUTR(playerName, pointsByPlayer, rankByPlayer) {
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+      const stats = computePlayerRankingStats(playerName);
+      const recentMatches = stats.contributions
+        .filter(c => !isNaN(c.matchDate) && c.matchDate >= twelveMonthsAgo)
+        .sort((a, b) => b.matchDate - a.matchDate)
+        .slice(0, 10);
+
+      if (recentMatches.length === 0) return 0;
+
+      const myRank = rankByPlayer[playerName] || 999;
+      const myPoints = pointsByPlayer[playerName] || 0;
+      let totalWeightedScore = 0;
+      let totalWeight = 0;
+
+      recentMatches.forEach((contribution, index) => {
+        const { isWinner, setsWon, setsLost, opponent } = contribution;
+        const opponentRank = rankByPlayer[opponent] || 999;
+        const opponentPoints = pointsByPlayer[opponent] || 0;
+        const pointDiff = opponentPoints - myPoints;
+        const rankDiff = myRank - opponentRank;
+
+        let matchScore = 5.0;
+
+        if (isWinner) {
+          matchScore = (setsWon === 2 && setsLost === 0) ? 9.0 : 7.0;
+          if (rankDiff > 0) {
+            matchScore += Math.min(rankDiff * 0.15, 2.5);
+            if (setsWon === 2 && setsLost === 0) matchScore += 0.75;
+          } else if (rankDiff < 0) {
+            matchScore -= Math.min(Math.abs(rankDiff) * 0.08, 1.5);
+          }
+          if (pointDiff > 0) matchScore += Math.min(pointDiff * 0.04, 1.5);
+        } else {
+          matchScore = (setsWon === 1 && setsLost === 2) ? 3.5 : 1.5;
+          if (rankDiff > 0) matchScore += Math.min(rankDiff * 0.12, 1.2);
+          else if (rankDiff < 0) matchScore -= Math.min(Math.abs(rankDiff) * 0.06, 1.0);
+          if (pointDiff > 0) matchScore += Math.min(pointDiff * 0.03, 0.8);
+        }
+
+        matchScore = Math.max(0, Math.min(10, matchScore));
+        const weight = Math.pow(0.75, index);
+        totalWeightedScore += matchScore * weight;
+        totalWeight += weight;
+      });
+
+      return totalWeight > 0 ? parseFloat((totalWeightedScore / totalWeight).toFixed(2)) : 0;
+    }
+
+    function buildPlayerRankings() {
+      const seen = new Set();
+      const autoStats = {};
+
+      // Incluir jugadores con perfil
+      allPlayerProfiles.forEach(profile => {
+        const name = profile.player_name;
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        autoStats[name] = computePlayerRankingStats(name);
+      });
+
+      // Incluir inscritos en cualquier torneo (aunque aún no tengan perfil)
+      allPlayers.forEach(player => {
+        const name = player.player_name;
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        autoStats[name] = computePlayerRankingStats(name);
+      });
+
+      // Incluir jugadores que aparecen en partidos validados pero no tienen perfil
+      allMatches.forEach(match => {
+        if (!isRecordValidated(match)) return;
+        [match.player1, match.player2].forEach(name => {
+          if (!name || seen.has(name)) return;
+          seen.add(name);
+          autoStats[name] = computePlayerRankingStats(name);
+        });
+      });
+
+      const pointsByPlayer = {};
+      Object.keys(autoStats).forEach(name => {
+        pointsByPlayer[name] = autoStats[name].points;
+      });
+
+      const rankByPlayer = {};
+      Object.keys(autoStats)
+        .map(name => ({ name, points: autoStats[name].points }))
+        .sort((a, b) => b.points - a.points)
+        .forEach((entry, index) => {
+          rankByPlayer[entry.name] = index + 1;
+        });
+
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+      const playerRankings = Object.keys(autoStats).map(name => {
+        const stats = autoStats[name];
+        const utr = calculateUTR(name, pointsByPlayer, rankByPlayer);
+        const recentMatchCount = stats.contributions.filter(c =>
+          !isNaN(c.matchDate) && c.matchDate >= twelveMonthsAgo
+        ).length;
+
+        const profile = getPlayerProfile(name) || { photo_url: '', club: '' };
+        return {
+          name,
+          points: stats.points,
+          wins: stats.wins,
+          losses: stats.losses,
+          setsWon: stats.setsWon,
+          setsLost: stats.setsLost,
+          matchesPlayed: stats.matchesPlayed,
+          efficiency: stats.efficiency,
+          pointsByTournament: stats.pointsByTournament || {},
+          utr,
+          recentMatchCount,
+          profile
+        };
+      });
+
+      playerRankings.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return b.efficiency - a.efficiency;
+      });
+
+      return playerRankings;
+    }
+
+    function getPendingValidations() {
+      return allMatches.filter(m => isRecordPendingValidation(m) && !isRecordValidated(m));
+    }
+
+    function calculatePlayerStats(playerName) {
+      const stats = computePlayerRankingStats(playerName);
+      return {
+        totalMatches: stats.matchesPlayed,
+        totalWins: stats.wins,
+        totalLosses: stats.losses,
+        totalSetsWon: stats.setsWon,
+        totalSetsLost: stats.setsLost,
+        totalPoints: stats.points,
+        efficiency: stats.efficiency,
+        pointsByTournament: stats.pointsByTournament || {}
+      };
+    }
+
+    function calculateStandings(tournamentId, group = null) {
+      const players = getTournamentPlayers(tournamentId, group);
+      const matches = getTournamentMatches(tournamentId);
+
+      const standings = players.map(player => {
+        let points = 0;
+        let wins = 0;
+        let losses = 0;
+
+        matches.forEach(match => {
+          const contribution = getMatchContribution(match, player.player_name);
+          if (!contribution) return;
+          points += contribution.points;
+          if (contribution.isWinner) wins++;
+          else losses++;
+        });
+
+        return {
+          name: player.player_name,
+          points,
+          wins,
+          losses,
+          matchesPlayed: wins + losses
+        };
+      });
+
+      return standings.sort((a, b) => b.points - a.points || b.wins - a.wins);
+    }
+
+    function generateRoundRobinDraw(players) {
+      const matches = [];
+      for (let i = 0; i < players.length; i++) {
+        for (let j = i + 1; j < players.length; j++) {
+          matches.push({
+            player1: players[i].player_name,
+            player2: players[j].player_name
+          });
+        }
+      }
+      return matches;
+    }
+
+    async function addPlayerProfile(firstName, lastName, phone, photoUrl, characteristics, club) {
+      if (recordCount >= 999) {
+        showMessage('Límite de 999 registros alcanzado. Por favor elimina algunos registros primero.', 'error');
+        return;
+      }
+
+      const playerName = `${firstName} ${lastName}`;
+
+      const existingProfile = getPlayerProfile(playerName);
+      if (existingProfile) {
+        showMessage('Ya existe un perfil para este jugador', 'error');
+        return;
+      }
+
+      const btn = document.querySelector('button[data-action="add-player-profile"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+      }
+
+      const result = await window.dataSdk.create({
+        id: `profile-${Date.now()}-${Math.random()}`,
+        type: 'player_profile',
+        player_name: playerName,
+        first_name: firstName,
+        last_name: lastName,
+        phone: phone || '',
+        photo_url: photoUrl || '',
+        characteristics: characteristics || '',
+        club: club || '',
+        created_at: new Date().toISOString()
+      });
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Guardar Jugador';
+      }
+
+      if (result.isOk) {
+        showMessage('Jugador agregado correctamente', 'success');
+      } else {
+        showMessage('Error al agregar jugador', 'error');
+      }
+    }
+
+    async function updatePlayerProfile(profileRecord, firstName, lastName, phone, photoUrl, characteristics, club) {
+      const btn = document.querySelector('button[data-action="update-player-profile"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Actualizando...';
+      }
+
+      const playerName = `${firstName} ${lastName}`;
+
+      const result = await window.dataSdk.update({
+        ...profileRecord,
+        player_name: playerName,
+        first_name: firstName,
+        last_name: lastName,
+        phone: phone || '',
+        photo_url: photoUrl || '',
+        characteristics: characteristics || '',
+        club: club || ''
+      });
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Actualizar Jugador';
+      }
+
+      if (result.isOk) {
+        showMessage('Jugador actualizado correctamente', 'success');
+        selectedPlayerId = null;
+      } else {
+        showMessage('Error al actualizar jugador', 'error');
+      }
+    }
+
+    async function deletePlayerProfile(profileRecord) {
+      const btn = document.querySelector(`button[data-delete-profile="${profileRecord.id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Eliminando...';
+      }
+
+      const result = await window.dataSdk.delete(profileRecord);
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Eliminar';
+      }
+
+      if (result.isOk) {
+        showMessage('Jugador eliminado correctamente', 'success');
+      } else {
+        showMessage('Error al eliminar jugador', 'error');
+      }
+    }
+
+    async function addPlayer(tournamentId, playerName, group = null) {
+      if (recordCount >= 999) {
+        showMessage('Límite de 999 registros alcanzado. Por favor elimina algunos registros primero.', 'error');
+        return;
+      }
+
+      const groupSuffix = group ? `-${group}` : '';
+      const btn = document.querySelector(`button[data-action="add-player-${tournamentId}${groupSuffix}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Agregando...';
+      }
+
+      const result = await window.dataSdk.create({
+        id: `player-${Date.now()}-${Math.random()}`,
+        type: 'player',
+        tournament_id: tournamentId,
+        player_name: playerName,
+        group: group || '',
+        created_at: new Date().toISOString()
+      });
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Agregar Jugador';
+      }
+
+      if (result.isOk) {
+        showMessage('Jugador agregado correctamente', 'success');
+      } else {
+        showMessage('Error al agregar jugador', 'error');
+      }
+    }
+
+    async function deletePlayer(playerRecord) {
+      const btn = document.querySelector(`button[data-delete-player="${playerRecord.id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Eliminando...';
+      }
+
+      const result = await window.dataSdk.delete(playerRecord);
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Eliminar';
+      }
+
+      if (result.isOk) {
+        showMessage('Jugador eliminado correctamente', 'success');
+      } else {
+        showMessage('Error al eliminar jugador', 'error');
+      }
+    }
+
+    async function addMatch(tournamentId, player1, player2, score, winner, setsWon, setsLost) {
+      if (recordCount >= 999) {
+        showMessage('Límite de 999 registros alcanzado. Por favor elimina algunos registros primero.', 'error');
+        return;
+      }
+
+      const btn = document.querySelector(`button[data-action="add-match-${tournamentId}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+      }
+
+      const result = await window.dataSdk.create({
+        id: `match-${Date.now()}-${Math.random()}`,
+        type: 'match',
+        tournament_id: tournamentId,
+        player1,
+        player2,
+        score,
+        winner,
+        sets_won: setsWon,
+        sets_lost: setsLost,
+        validated: true,
+        pending_validation: false,
+        created_at: new Date().toISOString()
+      });
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Guardar Resultado';
+      }
+
+      if (result.isOk) {
+        showMessage('Resultado guardado. Ranking y estadísticas actualizados.', 'success');
+      } else {
+        showMessage('Error al guardar resultado', 'error');
+      }
+    }
+
+    async function validateMatch(matchRecord) {
+      const btn = document.querySelector(`button[data-validate-match="${matchRecord.id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Validando...';
+      }
+
+      const result = await window.dataSdk.update({
+        ...matchRecord,
+        validated: true,
+        pending_validation: false
+      });
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✅ Validar';
+      }
+
+      if (result.isOk) {
+        showMessage('¡Resultado validado correctamente!', 'success');
+      } else {
+        showMessage('Error al validar resultado', 'error');
+      }
+    }
+
+    async function rejectMatch(matchRecord) {
+      const btn = document.querySelector(`button[data-reject-match="${matchRecord.id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Rechazando...';
+      }
+
+      const result = await window.dataSdk.delete(matchRecord);
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '❌ Rechazar';
+      }
+
+      if (result.isOk) {
+        showMessage('Resultado rechazado. El partido debe jugarse nuevamente.', 'success');
+      } else {
+        showMessage('Error al rechazar resultado', 'error');
+      }
+    }
+
+    async function deleteMatch(matchRecord) {
+      const btn = document.querySelector(`button[data-delete-match="${matchRecord.id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Eliminando...';
+      }
+
+      const result = await window.dataSdk.delete(matchRecord);
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Eliminar';
+      }
+
+      if (result.isOk) {
+        showMessage('Resultado eliminado correctamente', 'success');
+      } else {
+        showMessage('Error al eliminar resultado', 'error');
+      }
+    }
+
+    function showMessage(message, type) {
+      const container = document.getElementById('message-container');
+      if (!container) return;
+
+      const bgColor = type === 'success' ? '#10b981' : '#ef4444';
+      container.innerHTML = `
+        <div style="background: ${bgColor}; color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; animation: slideDown 0.3s ease;">
+          ${message}
+        </div>
+      `;
+
+      setTimeout(() => {
+        const c = document.getElementById('message-container');
+        if (c) c.innerHTML = '';
+      }, 3000);
+    }
+
+    function autoResizeTextarea(el) {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+
+    function render() {
+      const config = window.elementSdk.config;
+      const appTitle = config.app_title || defaultConfig.app_title;
+      const bgColor = config.background_color || defaultConfig.background_color;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryColor = config.primary_action_color || defaultConfig.primary_action_color;
+      const secondaryColor = config.secondary_action_color || defaultConfig.secondary_action_color;
+      const fontFamily = config.font_family || defaultConfig.font_family;
+      const fontSize = config.font_size || defaultConfig.font_size;
+      const groupAName = config.group_a_name || defaultConfig.group_a_name;
+      const groupBName = config.group_b_name || defaultConfig.group_b_name;
+
+      const app = document.getElementById('app');
+      app.style.background = bgColor;
+      app.style.color = textColor;
+      app.style.fontFamily = `${fontFamily}, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+      app.style.minHeight = '100%';
+      app.style.padding = '24px';
+
+      let html = `
+        <style>
+          @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+        </style>
+        <div id="message-container"></div>
+      `;
+
+      // Alerta de Validaciones Pendientes (visible en todas las vistas excepto menu)
+      const pendingValidations = getPendingValidations();
+      if (pendingValidations.length > 0 && currentView !== 'menu') {
+        html += `
+          <div class="validation-alert" style="position: sticky; top: 0; z-index: 1000; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4); border: 3px solid #fbbf24;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="font-size: ${fontSize * 3}px;">⚠️</div>
+              <div style="flex: 1;">
+                <h3 style="font-size: ${fontSize * 1.3}px; font-weight: 700; color: #000; margin-bottom: 8px;">
+                  ¡Tienes ${pendingValidations.length} resultado${pendingValidations.length > 1 ? 's' : ''} pendiente${pendingValidations.length > 1 ? 's' : ''} de validación!
+                </h3>
+                <p style="font-size: ${fontSize * 0.95}px; color: #000; opacity: 0.9; margin-bottom: 12px;">
+                  Verifica los resultados y valida si son correctos
+                </p>
+                <button onclick="navigateToView('validations')" style="background: #000; color: #fbbf24; padding: 10px 20px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 700; cursor: pointer;">
+                  Ver Validaciones Pendientes →
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      html += `<div style="max-width: 1400px; margin: 0 auto;">
+          <h1 style="font-size: ${fontSize * 2}px; font-weight: 700; margin-bottom: 24px; text-align: center;">${appTitle}</h1>
+      `;
+
+      // Vista de Validaciones Pendientes
+      if (currentView === 'validations') {
+        html += `
+          <button onclick="backToMenu()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+            ← Volver al Menú
+          </button>
+
+          <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 32px;">⚠️ Validaciones Pendientes</h2>
+        `;
+
+        if (pendingValidations.length === 0) {
+          html += `
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 48px; text-align: center;">
+              <div style="font-size: ${fontSize * 4}px; margin-bottom: 16px;">✅</div>
+              <p style="font-size: ${fontSize * 1.2}px; font-weight: 600; margin-bottom: 8px;">¡Todo al día!</p>
+              <p style="font-size: ${fontSize}px; opacity: 0.7;">No hay resultados pendientes de validación</p>
+            </div>
+          `;
+        } else {
+          html += `<div style="display: flex; flex-direction: column; gap: 20px;">`;
+
+          pendingValidations.forEach(match => {
+            const tournament = getTournaments().find(t => t.id === match.tournament_id);
+            const opponent = match.player1 === match.winner ? match.player2 : match.player1;
+            const loser = match.winner === match.player1 ? match.player2 : match.player1;
+
+            html += `
+              <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; border-left: 6px solid #f59e0b;">
+                <div style="display: flex; justify-content: space-between; align-items: start; gap: 24px; flex-wrap: wrap;">
+                  <div style="flex: 1; min-width: 300px;">
+                    <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor}; font-weight: 600; margin-bottom: 8px;">
+                      🏆 ${tournament ? tournament.name : 'Torneo'}
+                    </div>
+                    <div style="font-size: ${fontSize * 1.3}px; font-weight: 700; margin-bottom: 16px;">
+                      ${match.player1} <span style="opacity: 0.5;">vs</span> ${match.player2}
+                    </div>
+
+                    <div style="background: ${bgColor}; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                      <div style="font-size: ${fontSize * 0.9}px; opacity: 0.7; margin-bottom: 8px;">Resultado registrado:</div>
+                      <div style="font-size: ${fontSize * 1.2}px; font-weight: 700; color: ${primaryColor}; margin-bottom: 8px;">
+                        ${match.score}
+                      </div>
+                      <div style="font-size: ${fontSize}px; margin-bottom: 4px;">
+                        ✅ <strong>Ganador:</strong> ${match.winner}
+                      </div>
+                      <div style="font-size: ${fontSize * 0.9}px; opacity: 0.8;">
+                        Sets: ${match.sets_won}-${match.sets_lost}
+                      </div>
+                    </div>
+
+                    <div style="background: #fef3c7; padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                      <div style="font-size: ${fontSize * 0.9}px; color: #92400e;">
+                        <strong>${loser}</strong>, por favor valida que este resultado es correcto
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; flex-direction: column; gap: 12px; min-width: 200px;">
+                    <button onclick="handleValidateMatch('${match.id}')" data-validate-match="${match.id}"
+                            style="background: #10b981; color: white; padding: 14px 24px; border: none; border-radius: 8px; font-size: ${fontSize}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                      ✅ Validar Resultado
+                    </button>
+                    <button onclick="handleRejectMatch('${match.id}')" data-reject-match="${match.id}"
+                            style="background: #ef4444; color: white; padding: 14px 24px; border: none; border-radius: 8px; font-size: ${fontSize}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                      ❌ Rechazar Resultado
+                    </button>
+                    <div style="font-size: ${fontSize * 0.75}px; opacity: 0.7; text-align: center; margin-top: 4px;">
+                      Si el resultado es incorrecto, recházalo
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          html += `</div>`;
+        }
+      }
+
+      // Menú Principal
+      else if (currentView === 'menu') {
+        html += `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+        `;
+
+        // Agregar badge de validaciones pendientes si hay
+        if (pendingValidations.length > 0) {
+          html += `
+            <div onclick="navigateToView('validations')" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; padding: 32px; cursor: pointer; transition: transform 0.2s; text-align: center; position: relative; border: 3px solid #fbbf24;">
+              <div style="position: absolute; top: 12px; right: 12px; background: #ef4444; color: white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: ${fontSize * 1.1}px; font-weight: 700; animation: pulse 2s ease-in-out infinite;">
+                ${pendingValidations.length}
+              </div>
+              <div style="font-size: ${fontSize * 3}px; margin-bottom: 16px;">⚠️</div>
+              <h2 style="font-size: ${fontSize * 1.5}px; font-weight: 600; margin-bottom: 8px; color: #000;">Validaciones</h2>
+              <p style="font-size: ${fontSize * 0.9}px; color: #000; opacity: 0.9;">Resultados pendientes de confirmar</p>
+            </div>
+          `;
+        }
+
+        html += `
+            <div onclick="navigateToView('tournaments')" style="background: ${surfaceColor}; border-radius: 12px; padding: 32px; cursor: pointer; transition: transform 0.2s; text-align: center;">
+              <div style="font-size: ${fontSize * 3}px; margin-bottom: 16px;">🏆</div>
+              <h2 style="font-size: ${fontSize * 1.5}px; font-weight: 600; margin-bottom: 8px;">Torneos</h2>
+              <p style="font-size: ${fontSize * 0.9}px; opacity: 0.8;">Gestiona todos los torneos</p>
+            </div>
+
+            <div onclick="navigateToView('players')" style="background: ${surfaceColor}; border-radius: 12px; padding: 32px; cursor: pointer; transition: transform 0.2s; text-align: center;">
+              <div style="font-size: ${fontSize * 3}px; margin-bottom: 16px;">🎾</div>
+              <h2 style="font-size: ${fontSize * 1.5}px; font-weight: 600; margin-bottom: 8px;">Jugadores</h2>
+              <p style="font-size: ${fontSize * 0.9}px; opacity: 0.8;">Perfiles y estadísticas</p>
+            </div>
+
+            <div onclick="navigateToView('ranking')" style="background: ${surfaceColor}; border-radius: 12px; padding: 32px; cursor: pointer; transition: transform 0.2s; text-align: center;">
+              <div style="font-size: ${fontSize * 3}px; margin-bottom: 16px;">📊</div>
+              <h2 style="font-size: ${fontSize * 1.5}px; font-weight: 600; margin-bottom: 8px;">Ranking General</h2>
+              <p style="font-size: ${fontSize * 0.9}px; opacity: 0.8;">Estadísticas globales</p>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <button onclick="downloadBackup()" style="background: ${primaryColor}; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+              💾 Descargar Respaldo
+            </button>
+            <button onclick="document.getElementById('restore-input').click()" style="background: ${secondaryColor}; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+              📂 Restaurar Respaldo
+            </button>
+            <input type="file" id="restore-input" accept=".json" onchange="restoreBackup(event)" style="display: none;">
+          </div>
+        `;
+      }
+
+      // Vista de Jugadores
+      else if (currentView === 'players') {
+        html += `
+          <button onclick="backToMenu()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+            ← Volver al Menú
+          </button>
+
+          <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 32px;">Gestión de Jugadores</h2>
+
+          <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 32px;">
+            <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">
+              ${selectedPlayerId ? '✏️ Editar Jugador' : '➕ Nuevo Jugador'}
+            </h3>
+        `;
+
+        const selectedProfile = selectedPlayerId ? allPlayerProfiles.find(p => p.id === selectedPlayerId) : null;
+
+        html += `
+            <form onsubmit="event.preventDefault(); ${selectedPlayerId ? 'handleUpdatePlayerProfile' : 'handleAddPlayerProfile'}(event)" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div>
+                  <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Nombre *</label>
+                  <input type="text" name="firstName" placeholder="Juan" required
+                         value="${selectedProfile ? selectedProfile.first_name : ''}"
+                         style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                </div>
+                <div>
+                  <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Apellido *</label>
+                  <input type="text" name="lastName" placeholder="Pérez" required
+                         value="${selectedProfile ? selectedProfile.last_name : ''}"
+                         style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                </div>
+              </div>
+
+              <div>
+                <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Celular</label>
+                <input type="tel" name="phone" placeholder="+595 981 234567"
+                       value="${selectedProfile ? selectedProfile.phone : ''}"
+                       style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+              </div>
+
+              <div>
+                <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Foto del Jugador</label>
+                <input type="file" name="photoFile" accept="image/*" capture="environment"
+                       onchange="handlePhotoUpload(event)"
+                       style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                <input type="hidden" name="photoUrl" id="photoUrl" value="${selectedProfile ? selectedProfile.photo_url : ''}">
+                ${selectedProfile && selectedProfile.photo_url ? `
+                  <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                    <img src="${selectedProfile.photo_url}" alt="Preview" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover; border: 2px solid ${secondaryColor};">
+                    <span style="font-size: ${fontSize * 0.85}px; opacity: 0.7;">Foto actual</span>
+                  </div>
+                ` : ''}
+                <div id="photo-preview-container" style="margin-top: 8px;"></div>
+              </div>
+
+              <div>
+                <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Club</label>
+                <input type="text" name="club" placeholder="Club Deportivo"
+                       value="${selectedProfile ? selectedProfile.club : ''}"
+                       style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+              </div>
+
+              <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Características del Jugador</label>
+                <textarea name="characteristics" rows="3" placeholder="Juego agresivo, buen saque, revés fuerte..."
+                          style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px; resize: vertical;">${selectedProfile ? selectedProfile.characteristics : ''}</textarea>
+              </div>
+
+              <div style="grid-column: 1 / -1; display: flex; gap: 12px;">
+                <button type="submit" data-action="${selectedPlayerId ? 'update-player-profile' : 'add-player-profile'}"
+                        style="flex: 1; background: ${primaryColor}; color: white; padding: 12px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer;">
+                  ${selectedPlayerId ? 'Actualizar Jugador' : 'Guardar Jugador'}
+                </button>
+                ${selectedPlayerId ? `
+                  <button type="button" onclick="cancelEditPlayer()"
+                          style="background: ${secondaryColor}; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer;">
+                    Cancelar
+                  </button>
+                ` : ''}
+              </div>
+            </form>
+          </div>
+
+          <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin: 0;">📋 Lista de Jugadores (${allPlayerProfiles.length})</h3>
+              <div style="position: relative; flex: 1; min-width: 220px; max-width: 380px;">
+                <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: ${fontSize}px; pointer-events: none;">🔍</span>
+                <input type="text" id="player-search-input"
+                       placeholder="Buscar jugador por nombre, club..."
+                       value="${playerSearchQuery}"
+                       oninput="handlePlayerSearch(this.value)"
+                       style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 8px; padding: 10px 12px 10px 38px; font-size: ${fontSize * 0.95}px; box-sizing: border-box;">
+                ${playerSearchQuery ? `<button onclick="handlePlayerSearch('')" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: ${fontSize}px; cursor: pointer; opacity: 0.5; padding: 0;">✕</button>` : ''}
+              </div>
+            </div>
+        `;
+
+        const filteredProfiles = playerSearchQuery.trim()
+          ? allPlayerProfiles.filter(p => {
+              const q = playerSearchQuery.toLowerCase();
+              return (p.player_name || '').toLowerCase().includes(q)
+                  || (p.club || '').toLowerCase().includes(q)
+                  || (p.first_name || '').toLowerCase().includes(q)
+                  || (p.last_name || '').toLowerCase().includes(q);
+            })
+          : allPlayerProfiles;
+
+        if (allPlayerProfiles.length === 0) {
+          html += `<p style="font-size: ${fontSize}px; opacity: 0.7; text-align: center; padding: 32px;">No hay jugadores registrados aún</p>`;
+        } else if (filteredProfiles.length === 0) {
+          html += `
+            <div style="text-align: center; padding: 40px 20px;">
+              <div style="font-size: ${fontSize * 3}px; margin-bottom: 12px;">🔍</div>
+              <p style="font-size: ${fontSize * 1.1}px; font-weight: 600; margin-bottom: 8px;">Sin resultados</p>
+              <p style="font-size: ${fontSize * 0.9}px; opacity: 0.6;">No se encontró ningún jugador con "<strong>${playerSearchQuery}</strong>"</p>
+              <button onclick="handlePlayerSearch('')" style="margin-top: 16px; background: ${primaryColor}; color: white; border: none; border-radius: 6px; padding: 10px 20px; font-size: ${fontSize * 0.9}px; cursor: pointer;">Limpiar búsqueda</button>
+            </div>`;
+        } else {
+          html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">`;
+
+          filteredProfiles.forEach(profile => {
+            const stats = calculatePlayerStats(profile.player_name);
+
+            html += `
+              <div style="background: ${bgColor}; border-radius: 8px; padding: 20px; border: 2px solid ${secondaryColor};">
+                <div style="display: flex; align-items: start; gap: 16px; margin-bottom: 16px;">
+                  ${profile.photo_url ? `
+                    <div style="width: 60px; height: 60px; border-radius: 50%; overflow: hidden; background: ${secondaryColor}; flex-shrink: 0;">
+                      <img src="${profile.photo_url}" alt="${profile.player_name}"
+                           style="width: 100%; height: 100%; object-fit: cover;"
+                           onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:${fontSize * 1.5}px;\\'>👤</div>';">
+                    </div>
+                  ` : `
+                    <div style="width: 60px; height: 60px; border-radius: 50%; background: ${secondaryColor}; display: flex; align-items: center; justify-content: center; font-size: ${fontSize * 1.5}px; flex-shrink: 0;">
+                      👤
+                    </div>
+                  `}
+                  <div style="flex: 1; min-width: 0;">
+                    <h4 style="font-size: ${fontSize * 1.1}px; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${profile.player_name}</h4>
+                    ${profile.club ? `<p style="font-size: ${fontSize * 0.85}px; opacity: 0.7; margin-bottom: 4px;">🏟️ ${profile.club}</p>` : ''}
+                    ${profile.phone ? `
+                      <a href="https://api.whatsapp.com/send?phone=${profile.phone.replace(/[^0-9]/g, '')}" target="_blank" rel="noopener noreferrer"
+                         style="display: inline-flex; align-items: center; gap: 4px; font-size: ${fontSize * 0.85}px; color: #25D366; text-decoration: none; padding: 4px 8px; background: #25D36620; border-radius: 4px; transition: background 0.2s;"
+                         onmouseover="this.style.background='#25D36640'" onmouseout="this.style.background='#25D36620'">
+                        📱 ${profile.phone}
+                      </a>
+                    ` : ''}
+                  </div>
+                </div>
+
+                ${profile.characteristics ? `
+                  <div style="background: ${surfaceColor}; padding: 10px; border-radius: 6px; margin-bottom: 16px;">
+                    <p style="font-size: ${fontSize * 0.85}px; opacity: 0.9; line-height: 1.4;">${profile.characteristics}</p>
+                  </div>
+                ` : ''}
+
+                <div style="background: ${surfaceColor}; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                  <div style="font-size: ${fontSize * 0.85}px; font-weight: 600; margin-bottom: 8px; color: ${primaryColor};">📊 Estadísticas Generales</div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: ${fontSize * 0.85}px;">
+                    <div>Puntos: <strong style="color: ${primaryColor};">${stats.totalPoints}</strong></div>
+                    <div>Partidos: <strong>${stats.totalMatches}</strong></div>
+                    <div>Eficiencia: <strong style="color: ${stats.efficiency >= 50 ? '#10b981' : '#ef4444'};">${stats.efficiency}%</strong></div>
+                    <div>Ganados: <strong style="color: #10b981;">${stats.totalWins}</strong></div>
+                    <div>Perdidos: <strong style="color: #ef4444;">${stats.totalLosses}</strong></div>
+                    <div>Sets G: <strong>${stats.totalSetsWon}</strong></div>
+                    <div>Sets P: <strong>${stats.totalSetsLost}</strong></div>
+                  </div>
+                  ${(() => {
+                    const cols = getRankingTournamentColumns();
+                    if (!cols.length) return '';
+                    return `<div style="margin-top:12px; padding-top:10px; border-top:1px solid ${secondaryColor}55;">
+                      <div style="font-size:${fontSize * 0.8}px; font-weight:600; margin-bottom:6px; opacity:0.85;">Puntos por torneo</div>
+                      ${cols.map(t => {
+                        const n = (stats.pointsByTournament && stats.pointsByTournament[t.id]) || 0;
+                        return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:${fontSize * 0.8}px; padding:2px 0;"><span style="opacity:0.8;">${t.name}</span><strong>${n}</strong></div>`;
+                      }).join('')}
+                    </div>`;
+                  })()}
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button onclick="editPlayer('${profile.id}')"
+                          style="flex: 1; background: ${primaryColor}; color: white; padding: 8px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; cursor: pointer;">
+                    ✏️ Editar
+                  </button>
+                  <button onclick="deletePlayerProfileById('${profile.id}')" data-delete-profile="${profile.id}"
+                          style="background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; cursor: pointer;">
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            `;
+          });
+
+          html += `</div>`;
+        }
+
+        html += `</div>`;
+      }
+
+      // Vista de Ranking General
+      else if (currentView === 'ranking') {
+        html += `
+          <button onclick="backToMenu()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+            ← Volver al Menú
+          </button>
+
+          <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 8px;">📊 Ranking General - Todos los Torneos</h2>
+          <p style="font-size: ${fontSize * 0.95}px; opacity: 0.8; margin-bottom: 28px;">
+            Los <strong>PTS</strong> se actualizan solos desde MySQL: suman partidos validados de <strong>todos</strong> los torneos (anteriores y nuevos).
+          </p>
+
+          <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px;">
+        `;
+
+        const rankingTournamentColumns = getRankingTournamentColumns();
+        const playerRankings = buildPlayerRankings();
+
+        // displayRankings: ordenar por valores MOSTRADOS (incluyendo overrides) para TODOS los modos
+        const displayRankings = [...playerRankings].map(p => {
+          const ovr = manualRankingOrder[p.name] || {};
+          // PTS siempre en vivo: suma de todos los torneos desde MySQL (no se congela con override)
+          const displayPts = p.points;
+          const displayWins = getRankingOverrideValue(ovr, 'pg', p.wins);
+          const displayLosses = getRankingOverrideValue(ovr, 'pp', p.losses);
+          const displaySetsWon = getRankingOverrideValue(ovr, 'sg', p.setsWon);
+          const displaySetsLost = getRankingOverrideValue(ovr, 'sp', p.setsLost);
+          // Recalcular eficiencia y partidos desde valores mostrados
+          const totalMatches = displayWins + displayLosses;
+          const autoEff = totalMatches > 0 ? parseFloat(((displayWins / totalMatches) * 100).toFixed(1)) : 0;
+          // Igual que displayPts/displayWins/etc: si hay un override manual de 'ef', respetarlo;
+          // si no, usar el valor recalculado automáticamente desde PG/PP.
+          const displayEff = getRankingOverrideValue(ovr, 'ef', autoEff);
+          return {
+            ...p,
+            displayPts,
+            displayWins,
+            displayLosses,
+            displaySetsWon,
+            displaySetsLost,
+            displayEff
+          };
+        }).sort((a, b) => {
+          if (b.displayPts !== a.displayPts) return b.displayPts - a.displayPts;
+          if (b.displayWins !== a.displayWins) return b.displayWins - a.displayWins;
+          return b.displayEff - a.displayEff;
+        });
+
+        const orderedRankings = displayRankings.map((p, idx) => {
+              const ovr = manualRankingOrder[p.name] || {};
+              const manualPos = ovr.pos;
+              return {
+                ...p,
+                autoPos: idx + 1,
+                pos: manualPos !== undefined && manualPos !== null && manualPos !== '' ? manualPos : idx + 1
+              };
+            });
+
+        if (orderedRankings.length === 0) {
+          html += `<p style="font-size: ${fontSize}px; opacity: 0.7; text-align: center; padding: 32px;">No hay datos de jugadores para mostrar en el ranking</p>`;
+        } else {
+          const inputStyle = `text-align:center; font-size:${fontSize * 0.9}px; font-weight:600; background:${bgColor}; color:${textColor}; border:1px solid ${secondaryColor}; border-radius:5px; padding:4px 2px; width:100%;`;
+          const readStyle = `text-align:center; font-size:${fontSize * 0.9}px; font-weight:600; display:block; width:100%; padding:6px 2px;`;
+
+          html += `
+            <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <p style="font-size: ${fontSize * 0.95}px; opacity: 0.85; margin: 0;">
+                ${isAdminLoggedIn
+                  ? (Object.keys(pendingRankingChanges).length > 0
+                      ? '⚠️ <strong>Cambios sin guardar.</strong> Presiona <strong>💾 Guardar cambios</strong> para confirmar.'
+                      : '✏️ <strong>Modo Admin activo.</strong> Edita los campos y presiona Guardar cambios.')
+                  : '📊 Ranking actualizado automáticamente desde los partidos registrados.'}
+              </p>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                ${isAdminLoggedIn ? `
+                  <button onclick="resetManualRanking()" style="background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; font-weight: 600; cursor: pointer;">
+                    🔄 Restablecer
+                  </button>
+                  <button onclick="console.log('[RANKING] Click en Guardar cambios'); saveAllRankingChanges();" id="btn-save-ranking"
+                    style="background: ${Object.keys(pendingRankingChanges).length > 0 ? '#16a34a' : '#374151'}; color: white; padding: 8px 20px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; font-weight: 700; cursor: pointer; display:flex; align-items:center; gap:6px; transition: background 0.2s;">
+                    💾 Guardar cambios${Object.keys(pendingRankingChanges).length > 0 ? ` (${Object.keys(pendingRankingChanges).length})` : ''}
+                  </button>
+                  <button onclick="adminLogout()" style="background: #64748b; color: white; padding: 8px 16px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; font-weight: 600; cursor: pointer;">
+                    🔒 Salir
+                  </button>
+                ` : `
+                  <button onclick="showAdminLoginModal()" style="background: #7c3aed; color: white; padding: 8px 18px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; font-weight: 600; cursor: pointer;">
+                    🔑 Editar (Admin)
+                  </button>
+                `}
+              </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; min-width: 1100px;">
+                <thead>
+                  <tr style="background: ${bgColor};">
+                    <th style="padding: 14px 10px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor}; min-width: 70px;">#</th>
+                    <th style="padding: 14px 12px; text-align: left; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">Jugador</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor}; color: #f59e0b;">UTR</th>
+                    ${rankingTournamentColumns.map(t => {
+                      const short = t.name.length > 16 ? t.name.slice(0, 14) + '…' : t.name;
+                      return `<th title="${t.name}" style="padding: 14px 8px; text-align: center; font-size: ${fontSize * 0.75}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor}; min-width: 88px; white-space: nowrap;">${short}</th>`;
+                    }).join('')}
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor}; color: ${primaryColor};">PTS</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">PJ</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">PG</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">PP</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">SG</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">SP</th>
+                    <th style="padding: 14px 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; border-bottom: 2px solid ${secondaryColor};">EF%</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+
+          // ── Acumuladores de totales para la fila de suma ──
+          let sumPts = 0, sumPj = 0, sumPg = 0, sumPp = 0, sumSg = 0, sumSp = 0, sumUtr = 0, sumEf = 0;
+          const sumByTournament = {};
+          rankingTournamentColumns.forEach(t => { sumByTournament[t.id] = 0; });
+
+          orderedRankings.forEach((player, index) => {
+            const ovr = manualRankingOrder[player.name] || {};
+            if (index < 3) {
+              console.log('[RANKING] Render jugador', player.name, 'ovr:', ovr, 'auto pts:', player.points, 'auto ef:', player.efficiency);
+            }
+            // Ranking 100% automático: PTS, PJ, PG, PP, SG, SP, EF% y UTR se calculan desde los partidos.
+            const autoUtr = player.utr > 0 ? player.utr.toFixed(2) : '0.00';
+            // Posición: usa manual si existe, sino automática
+            const pos     = player.pos || (index + 1);
+            // Valores: usar display* (ya calculados en displayRankings) o override manual
+            const utrVal  = getRankingOverrideValue(ovr, 'utr', autoUtr);
+            const ptsVal  = player.points; // suma en vivo de todos los torneos
+            const pjVal   = player.matchesPlayed;
+            const pgVal   = player.wins;
+            const ppVal   = player.losses;
+            const sgVal   = player.setsWon;
+            const spVal   = player.setsLost;
+            const efVal   = player.efficiency;
+            const byT = player.pointsByTournament || {};
+            const tournamentCells = rankingTournamentColumns.map(t => {
+              const n = byT[t.id] || 0;
+              sumByTournament[t.id] = (sumByTournament[t.id] || 0) + n;
+              return `<td style="padding:8px; text-align:center; font-size:${fontSize * 0.85}px; font-weight:600; opacity:${n ? 1 : 0.45};">${n}</td>`;
+            }).join('');
+
+            // Acumular totales
+            sumPts += parseFloat(ptsVal) || 0;
+            sumPj  += parseFloat(pjVal)  || 0;
+            sumPg  += parseFloat(pgVal)  || 0;
+            sumPp  += parseFloat(ppVal)  || 0;
+            sumSg  += parseFloat(sgVal)  || 0;
+            sumSp  += parseFloat(spVal)  || 0;
+            sumUtr += parseFloat(utrVal) || 0;
+            sumEf  += parseFloat(efVal)  || 0;
+
+            const rowBg = index % 2 === 0 ? surfaceColor : 'transparent';
+            const medalEmoji = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '';
+            const safePhotoUrl = (player.profile.photo_url || '').replace(/'/g, "\'");
+            const safeName = player.name.replace(/\\/g, '\\\\').replace(/'/g, "\'");
+
+            const playerPhoto = safePhotoUrl
+              ? `<div style="width:40px;height:40px;border-radius:50%;overflow:hidden;background:${secondaryColor};flex-shrink:0;"><img src="${safePhotoUrl}" alt="${player.name}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:${fontSize * 1.2}px;\\'>👤</div>';"></div>`
+              : `<div style="width:40px;height:40px;border-radius:50%;background:${secondaryColor};display:flex;align-items:center;justify-content:center;font-size:${fontSize * 1.2}px;flex-shrink:0;">👤</div>`;
+            const playerClub = player.profile.club ? `<div style="font-size:${fontSize * 0.75}px;opacity:0.7;font-weight:400;">${player.profile.club}</div>` : '';
+
+            if (isAdminLoggedIn) {
+              html += `
+                <tr style="background: ${rowBg}; border-left: 3px solid #7c3aed;">
+                  <td style="padding: 8px; text-align: center;">
+                    <div style="display:flex; align-items:center; justify-content:center; gap:4px;">
+                      <span style="font-size:${fontSize * 1.1}px;">${medalEmoji}</span>
+                      <input type="number" min="1" max="${orderedRankings.length}" value="${pos}"
+                        style="${inputStyle} width:48px; font-weight:700; color:${primaryColor}; border-color:${primaryColor};"
+                        oninput="saveRankingField(\'${safeName}\',\'pos\', this.value)" onchange="saveRankingField(\'${safeName}\',\'pos\', this.value)"
+                        onkeydown="if(event.key==='Enter') this.blur()">
+                    </div>
+                  </td>
+                  <td style="padding: 12px; font-size: ${fontSize}px; font-weight: 600;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      ${playerPhoto}
+                      <div><div>${player.name}</div>${playerClub}</div>
+                    </div>
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" step="0.01" min="0" max="10" value="${utrVal}"
+                      style="${inputStyle} color:#f59e0b; font-weight:700;"
+                      oninput="saveRankingField(\'${safeName}\',\'utr\', this.value)" onchange="saveRankingField(\'${safeName}\',\'utr\', this.value)"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  ${tournamentCells}
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.95}px; font-weight:800; color:${primaryColor};" data-live-pts="${ptsVal}">${ptsVal}</td>
+                  <td style="padding:8px;">
+                    <input type="number" min="0" value="${pjVal}"
+                      style="${inputStyle}"
+                      oninput="saveRankingField(\'${safeName}\',\'pj\', this.value)" onchange="saveRankingField(\'${safeName}\',\'pj\', this.value)"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" min="0" value="${pgVal}" data-rank-pg
+                      style="${inputStyle} color:#10b981; font-weight:600;"
+                      oninput="saveRankingField(\'${safeName}\',\'pg\', this.value); autoCalcEF('${safeName}', this);" onchange="saveRankingField(\'${safeName}\',\'pg\', this.value); autoCalcEF('${safeName}', this);"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" min="0" value="${ppVal}" data-rank-pp
+                      style="${inputStyle} color:#ef4444; font-weight:600;"
+                      oninput="saveRankingField(\'${safeName}\',\'pp\', this.value); autoCalcEF('${safeName}', this);" onchange="saveRankingField(\'${safeName}\',\'pp\', this.value); autoCalcEF('${safeName}', this);"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" min="0" value="${sgVal}"
+                      style="${inputStyle}"
+                      oninput="saveRankingField(\'${safeName}\',\'sg\', this.value)" onchange="saveRankingField(\'${safeName}\',\'sg\', this.value)"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" min="0" value="${spVal}"
+                      style="${inputStyle}"
+                      oninput="saveRankingField(\'${safeName}\',\'sp\', this.value)" onchange="saveRankingField(\'${safeName}\',\'sp\', this.value)"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                  <td style="padding:8px;">
+                    <input type="number" step="0.1" min="0" max="100" value="${efVal}" data-rank-ef
+                      style="${inputStyle} font-weight:700;"
+                      oninput="saveRankingField(\'${safeName}\',\'ef\', this.value)" onchange="saveRankingField(\'${safeName}\',\'ef\', this.value)"
+                      onkeydown="if(event.key==='Enter') this.blur()">
+                  </td>
+                </tr>
+              `;
+            } else {
+              html += `
+                <tr style="background: ${rowBg};">
+                  <td style="padding: 8px; text-align: center;">
+                    <span style="font-size:${fontSize * 1.1}px; display:inline-block; margin-right:4px;">${medalEmoji}</span>
+                    <span style="font-weight:700; color:${primaryColor}; font-size:${fontSize * 0.9}px;">${pos}</span>
+                  </td>
+                  <td style="padding: 12px; font-size: ${fontSize}px; font-weight: 600;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      ${playerPhoto}
+                      <div><div>${player.name}</div>${playerClub}</div>
+                    </div>
+                  </td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:700; color:#f59e0b;">${utrVal}</td>
+                  ${tournamentCells}
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.95}px; font-weight:800; color:${primaryColor};" data-live-pts="${ptsVal}">${ptsVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:600;">${pjVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:600; color:#10b981;">${pgVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:600; color:#ef4444;">${ppVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:600;">${sgVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:600;">${spVal}</td>
+                  <td style="padding:8px; text-align:center; font-size:${fontSize * 0.9}px; font-weight:700;">${efVal}%</td>
+                </tr>
+              `;
+            }
+          });
+
+          const avgUtr = orderedRankings.length > 0 ? (sumUtr / orderedRankings.length).toFixed(2) : '0.00';
+          const avgEf  = orderedRankings.length > 0 ? (sumEf  / orderedRankings.length).toFixed(1) : '0.0';
+
+          html += `
+                </tbody>
+                <tfoot>
+                  <tr style="background: linear-gradient(90deg, ${primaryColor}22, ${primaryColor}11); border-top: 2px solid ${primaryColor};">
+                    <td colspan="2" style="padding: 12px 14px; font-size: ${fontSize * 0.9}px; font-weight: 700; color: ${primaryColor};">
+                      Σ TOTALES <span style="font-size:${fontSize * 0.75}px; font-weight:500; opacity:0.7;">(${orderedRankings.length} jugadores)</span>
+                    </td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; color: #f59e0b;">${avgUtr}</td>
+                    ${rankingTournamentColumns.map(t => `<td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.85}px; font-weight: 700;">${sumByTournament[t.id] || 0}</td>`).join('')}
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 800; color: ${primaryColor};">${sumPts}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">${sumPj}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; color: #10b981;">${sumPg}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700; color: #ef4444;">${sumPp}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">${sumSg}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">${sumSp}</td>
+                    <td style="padding: 12px 8px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">${avgEf}%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div style="margin-top: 24px; padding: 60px 70px; background: ${bgColor}; border-radius: 10px; border: 1px solid ${secondaryColor};">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:${editingLegend ? '20' : '16'}px; flex-wrap:wrap; gap:8px;">
+                <strong style="font-size:${fontSize * 4.5}px;">📋 Leyenda</strong>
+                ${isAdminLoggedIn ? `
+                  <div style="display:flex; gap:8px;">
+                    ${editingLegend ? `
+                      <button onclick="resetLegend()" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:${fontSize * 0.8}px;font-weight:600;cursor:pointer;">🔄 Restablecer</button>
+                      <button onclick="cancelEditLegend()" style="background:#64748b;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:${fontSize * 0.8}px;font-weight:600;cursor:pointer;">✕ Cancelar</button>
+                      <button onclick="saveLegendChanges()" style="background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:${fontSize * 0.8}px;font-weight:700;cursor:pointer;">💾 Guardar leyenda</button>
+                    ` : `
+                      <button onclick="startEditLegend(event)" style="background:transparent;border:1px solid ${secondaryColor};border-radius:6px;padding:5px 10px;font-size:${fontSize * 0.8}px;cursor:pointer;color:${textColor};display:flex;align-items:center;gap:5px;">✏️ Editar leyenda</button>
+                    `}
+                  </div>
+                ` : ''}
+              </div>
+              ${editingLegend ? `
+                <div style="display:grid; gap:10px;">
+                  ${legendItems.map(item => `
+                    <div style="display:grid; grid-template-columns:80px 1fr; gap:8px; align-items:start; padding:10px 12px; background:${surfaceColor}; border-radius:8px;">
+                      <div>
+                        <label style="font-size:${fontSize * 0.72}px; opacity:0.6; display:block; margin-bottom:3px;">Abreviatura</label>
+                        <input type="text" value="${item.label}"
+                          onchange="updatePendingLegend('${item.key}','label',this.value)"
+                          style="width:100%; background:${bgColor}; color:${item.color || textColor}; border:1.5px solid ${primaryColor}; border-radius:5px; padding:5px 7px; font-size:${fontSize * 0.85}px; font-weight:700; text-align:center;">
+                      </div>
+                      <div>
+                        <label style="font-size:${fontSize * 0.72}px; opacity:0.6; display:block; margin-bottom:3px;">Descripción</label>
+                        <textarea rows="1"
+                          oninput="updatePendingLegend('${item.key}','desc',this.value); autoResizeTextarea(this);"
+                          style="width:100%; background:${bgColor}; color:${textColor}; border:1.5px solid ${secondaryColor}; border-radius:5px; padding:8px 10px; font-size:${fontSize * 1.05}px; font-family:inherit; resize:none; overflow:hidden; field-sizing:content; line-height:1.4;">${item.desc}</textarea>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div style="font-size: ${fontSize * 3.5}px; opacity: 0.85; line-height:2.4;">
+                  ${legendItems.map((item, idx) =>
+                    (item.color ? `<strong style="color:${item.color}">${item.label}</strong>` : `<strong>${item.label}</strong>`) +
+                    ` = ${item.desc}` +
+                    (idx < legendItems.length - 1 ? ' &nbsp;|&nbsp; ' : '')
+                  ).join('')}
+                </div>
+              `}
+            </div>
+
+            ${isAdminLoggedIn && Object.keys(pendingRankingChanges).length > 0 ? `
+            <div style="position:sticky; bottom:16px; margin-top:20px; background:#16a34a; border-radius:12px; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; box-shadow: 0 8px 32px rgba(22,163,74,0.45); z-index:100;">
+              <div style="color:white;">
+                <strong style="font-size:${fontSize}px;">💾 Tienes cambios sin guardar</strong>
+                <span style="font-size:${fontSize * 0.85}px; opacity:0.85; margin-left:8px;">${Object.keys(pendingRankingChanges).length} jugador${Object.keys(pendingRankingChanges).length !== 1 ? 'es' : ''} modificado${Object.keys(pendingRankingChanges).length !== 1 ? 's' : ''}</span>
+              </div>
+              <button onclick="saveAllRankingChanges()"
+                style="background:white; color:#16a34a; border:none; border-radius:8px; padding:10px 24px; font-size:${fontSize}px; font-weight:700; cursor:pointer; white-space:nowrap;">
+                ✓ Guardar cambios
+              </button>
+            </div>
+            ` : ''}
+          `;
+        }
+
+        html += `</div>`;
+      }
+
+      // Vista de Torneos
+      else if (currentView === 'tournaments') {
+        html += `
+          <button onclick="backToMenu()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+            ← Volver al Menú
+          </button>
+          <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 24px;">🏆 Torneos</h2>
+          <!-- Formulario nuevo torneo -->
+          <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 28px; border: 2px dashed ${primaryColor};">
+            <h3 style="font-size: ${fontSize * 1.15}px; font-weight: 600; margin-bottom: 16px; color: ${primaryColor};">➕ Agregar Nuevo Torneo</h3>
+            <form onsubmit="handleAddTournament(event)" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+              <div style="flex: 1; min-width: 200px;">
+                <label style="display: block; font-size: ${fontSize * 0.9}px; margin-bottom: 6px; font-weight: 500;">Nombre del Torneo *</label>
+                <input type="text" id="new-tournament-name" placeholder="Ej: Copa Primavera 2026" required
+                       style="width: 100%; background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+              </div>
+              <button type="submit"
+                      style="background: ${primaryColor}; color: white; padding: 12px 28px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                🏆 Crear Torneo
+              </button>
+            </form>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+        `;
+
+        getTournaments().forEach(tournament => {
+          const players = getTournamentPlayers(tournament.id);
+          const groupInfo = tournament.hasGroups ? '🏆 Con Grupos' : '';
+          const tPhoto = getTournamentPhoto(tournament.id);
+          html += `
+            <div style="background: ${surfaceColor}; border-radius: 12px; overflow: hidden; transition: transform 0.2s; position: relative; display: flex; flex-direction: column;">
+              <button onclick="handleDeleteTournament('${tournament.id}', event)"
+                      title="Eliminar torneo"
+                      style="position: absolute; top: 12px; right: 12px; z-index: 10; background: #ef4444; color: white; border: none; border-radius: 50%; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;">✕</button>
+
+              <!-- Foto del torneo -->
+              <div style="position: relative; width: 100%; background: linear-gradient(135deg, ${primaryColor}22, ${secondaryColor}44); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                ${tPhoto ? `
+                  <img src="${tPhoto}" alt="${tournament.name}" style="width: 100%; height: auto; display: block;">
+                  <div style="position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px;">
+                    <label title="Cambiar foto" style="background: rgba(0,0,0,0.65); color: white; border: none; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px; backdrop-filter: blur(4px);">
+                      📷 Cambiar
+                      <input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${tournament.id}', event)" style="display:none;">
+                    </label>
+                    <button onclick="event.stopPropagation(); removeTournamentPhoto('${tournament.id}')" title="Quitar foto" style="background: rgba(239,68,68,0.85); color: white; border: none; border-radius: 6px; padding: 5px 8px; font-size: 13px; cursor: pointer; backdrop-filter: blur(4px);">🗑️</button>
+                  </div>
+                ` : `
+                  <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 8px; opacity: 0.4;">🏆</div>
+                    <label style="background: ${primaryColor}; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: ${fontSize * 0.85}px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                      📷 Agregar foto
+                      <input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${tournament.id}', event)" style="display:none;">
+                    </label>
+                  </div>
+                `}
+              </div>
+
+              <div style="padding: 24px; flex: 1;">
+                <div style="margin-bottom: 16px; padding-right: 32px;">
+                  ${editingTournamentNameId === tournament.id ? `
+                    <div style="display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation()">
+                      <input id="edit-tname-${tournament.id}" type="text" value="${tournament.name.replace(/"/g,'&quot;')}"
+                        style="flex:1; font-size:${fontSize * 1.2}px; font-weight:600; background:${bgColor}; color:${textColor}; border:2px solid ${primaryColor}; border-radius:7px; padding:7px 10px; outline:none;"
+                        onkeydown="if(event.key==='Enter'){saveTournamentName('${tournament.id}',this.value);} if(event.key==='Escape'){cancelEditTournamentName();}">
+                      <button onclick="saveTournamentName('${tournament.id}', document.getElementById('edit-tname-${tournament.id}').value)"
+                        style="background:${primaryColor};color:white;border:none;border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer;font-weight:700;">✓</button>
+                      <button onclick="cancelEditTournamentName()"
+                        style="background:#64748b;color:white;border:none;border-radius:6px;padding:7px 10px;font-size:13px;cursor:pointer;">✕</button>
+                    </div>
+                  ` : `
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <h2 onclick="navigateToTournament('${tournament.id}')" style="cursor:pointer; font-size: ${fontSize * 1.5}px; font-weight: 600; margin:0; flex:1;">${tournament.name}</h2>
+                      <button onclick="startEditTournamentName('${tournament.id}', event)" title="Editar nombre"
+                        style="background:transparent; border:1px solid ${secondaryColor}; border-radius:6px; padding:5px 8px; cursor:pointer; font-size:14px; color:${textColor}; opacity:0.65; flex-shrink:0;"
+                        onmouseover="this.style.opacity='1';this.style.background='${surfaceColor}'"
+                        onmouseout="this.style.opacity='0.65';this.style.background='transparent'">✏️</button>
+                    </div>
+                  `}
+                </div>
+
+                <div onclick="navigateToTournament('${tournament.id}')" style="cursor: pointer;">
+                  <div style="font-size: ${fontSize * 0.9}px; color: ${textColor}; opacity: 0.8;">
+                    <p style="margin: 8px 0;">👥 ${players.length} jugadores</p>
+                    ${groupInfo ? `<p style="margin: 8px 0;">${groupInfo}</p>` : ''}
+                  </div>
+                  <button style="background: ${primaryColor}; color: white; padding: 8px 16px; border: none; border-radius: 6px; margin-top: 16px; width: 100%; font-size: ${fontSize}px; cursor: pointer;">
+                    Administrar Torneo
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        html += `</div>`;
+      } else if (currentView === 'tournament-detail') {
+        const tournament = getTournaments().find(t => t.id === currentTournament);
+        if (!tournament) { currentView = 'tournaments'; render(); return; }
+        const hasGroups = tournament.hasGroups;
+        const maxPlayersPerGroup = tournament.maxPlayersPerGroup || 5;
+        const groupCount = tournament.groupCount || 2;
+        const groupLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, groupCount);
+
+        if (hasGroups) {
+          html += `
+            <button onclick="backToTournaments()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+              ← Volver a Torneos
+            </button>
+
+            <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 24px;">${tournament.name}</h2>
+            <!-- Foto del torneo en el detalle -->
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;background:${surfaceColor};border-radius:12px;padding:16px;flex-wrap:wrap;">
+              <div style="position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,${primaryColor}22,${secondaryColor}44);display:flex;align-items:center;justify-content:center;border:2px solid ${secondaryColor};">
+                ${getTournamentPhoto(currentTournament) ? `
+                  <img src="${getTournamentPhoto(currentTournament)}" alt="${tournament.name}" style="width:100%;height:100%;object-fit:cover;">
+                  <label style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.65);color:white;text-align:center;padding:3px;font-size:11px;cursor:pointer;">📷<input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;"></label>
+                ` : `
+                  <label style="cursor:pointer;text-align:center;padding:6px;"><div style="font-size:28px;opacity:0.35;">🏆</div><div style="font-size:10px;opacity:0.6;margin-top:2px;">Foto</div><input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;"></label>
+                `}
+              </div>
+              <div>
+                <p style="margin:0 0 8px;font-size:${fontSize*0.85}px;opacity:0.65;">Foto del torneo</p>
+                <label style="background:${primaryColor};color:white;border:none;border-radius:6px;padding:7px 14px;font-size:${fontSize*0.85}px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                  📷 ${getTournamentPhoto(currentTournament) ? 'Cambiar foto' : 'Subir foto'}
+                  <input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;">
+                </label>
+                ${getTournamentPhoto(currentTournament) ? `<button onclick="removeTournamentPhoto('${currentTournament}')" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:7px 12px;font-size:${fontSize*0.85}px;cursor:pointer;margin-left:8px;">🗑️ Quitar</button>` : ''}
+              </div>
+            </div>
+
+            <!-- Panel de Configuración de Grupos y Jugadores -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+              <div style="background: linear-gradient(135deg, ${primaryColor}, #2563eb); border-radius: 12px; padding: 20px; color: white; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="flex: 1;">
+                  <div style="font-size: ${fontSize * 0.9}px; opacity: 0.9; margin-bottom: 4px; font-weight: 500;">⚙️ Cantidad de Grupos</div>
+                  <p style="font-size: ${fontSize * 0.8}px; opacity: 0.8; margin: 0;">Ajusta cuántos grupos tendrá el torneo</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button onclick="updateGroupCount('${currentTournament}', ${groupCount - 1})" style="background: white; color: ${primaryColor}; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">−</button>
+                  <input type="number" id="group-count-input" min="1" max="8" value="${groupCount}"
+                         onchange="updateGroupCount('${currentTournament}', parseInt(this.value))"
+                         style="background: white; color: ${primaryColor}; border: 2px solid white; border-radius: 6px; padding: 8px 12px; font-size: ${fontSize * 1.1}px; font-weight: 700; width: 60px; text-align: center;">
+                  <button onclick="updateGroupCount('${currentTournament}', ${groupCount + 1})" style="background: white; color: ${primaryColor}; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+
+              <div style="background: linear-gradient(135deg, #10b981, #059669); border-radius: 12px; padding: 20px; color: white; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="flex: 1;">
+                  <div style="font-size: ${fontSize * 0.9}px; opacity: 0.9; margin-bottom: 4px; font-weight: 500;">👥 Máx Jugadores/Grupo</div>
+                  <p style="font-size: ${fontSize * 0.8}px; opacity: 0.8; margin: 0;">Límite de jugadores por grupo</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button onclick="updateMaxPlayersPerGroup('${currentTournament}', ${maxPlayersPerGroup - 1})" style="background: white; color: #10b981; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">−</button>
+                  <input type="number" id="max-players-input" min="2" max="20" value="${maxPlayersPerGroup}"
+                         onchange="updateMaxPlayersPerGroup('${currentTournament}', parseInt(this.value))"
+                         style="background: white; color: #10b981; border: 2px solid white; border-radius: 6px; padding: 8px 12px; font-size: ${fontSize * 1.1}px; font-weight: 700; width: 60px; text-align: center;">
+                  <button onclick="updateMaxPlayersPerGroup('${currentTournament}', ${maxPlayersPerGroup + 1})" style="background: white; color: #10b981; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+            </div>
+          `;
+
+          const matches = getTournamentMatches(currentTournament).filter(m => isRecordValidated(m));
+          const pendingMatches = getTournamentMatches(currentTournament).filter(m => isRecordPendingValidation(m) && !isRecordValidated(m));
+
+          html += ``;
+
+          groupLetters.forEach((groupLetter, groupIndex) => {
+            const groupPlayers = getTournamentPlayers(currentTournament, groupLetter);
+            const standings = calculateStandings(currentTournament, groupLetter);
+            const draw = generateRoundRobinDraw(groupPlayers);
+            const groupName = window.elementSdk.config[`group_${groupLetter.toLowerCase()}_name`] || `Grupo ${groupLetter}`;
+
+            // Guardar jugadores en variables globales para usar en formularios
+            if (groupLetter === 'A') {
+              playersGroupA.length = 0;
+              playersGroupA.push(...groupPlayers);
+            } else if (groupLetter === 'B') {
+              playersGroupB.length = 0;
+              playersGroupB.push(...groupPlayers);
+            }
+
+            html += `
+            <!-- Grupo ${groupLetter} -->
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.5}px; font-weight: 700; margin-bottom: 24px; color: ${primaryColor};">🏆 ${groupName}</h3>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
+
+                <div style="background: ${bgColor}; border-radius: 12px; padding: 20px;">
+                  <h4 style="font-size: ${fontSize * 1.1}px; font-weight: 600; margin-bottom: 16px;">➕ Agregar Jugador</h4>
+                  ${groupPlayers.length >= maxPlayersPerGroup ? `<p style="color: #fbbf24; font-size: ${fontSize * 0.9}px; margin-bottom: 12px;">⚠️ Máximo ${maxPlayersPerGroup} jugadores por grupo</p>` : ''}
+                  <form onsubmit="handleAddPlayer(event, '${currentTournament}', '${groupLetter}')" style="display: flex; flex-direction: column; gap: 12px;">
+                    <select name="playerName" required
+                            ${groupPlayers.length >= maxPlayersPerGroup ? 'disabled' : ''}
+                            style="background: ${surfaceColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                      <option value="">Seleccionar jugador</option>
+          `;
+
+          allPlayerProfiles.forEach(profile => {
+            html += `<option value="${profile.player_name}">${profile.player_name}</option>`;
+          });
+
+          html += `
+                    </select>
+                    <button type="submit" data-action="add-player-${currentTournament}-${groupLetter}"
+                            ${groupPlayers.length >= maxPlayersPerGroup ? 'disabled' : ''}
+                            style="background: ${primaryColor}; color: white; padding: 12px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer; opacity: ${groupPlayers.length >= maxPlayersPerGroup ? '0.5' : '1'};">
+                      Agregar Jugador
+                    </button>
+                  </form>
+
+                  <div style="margin-top: 20px;">
+                    <h5 style="font-size: ${fontSize}px; font-weight: 600; margin-bottom: 12px;">Jugadores (${groupPlayers.length}/${maxPlayersPerGroup})</h5>
+                    <div style="max-height: 250px; overflow-y: auto;">
+          `;
+
+          groupPlayers.forEach(player => {
+            html += `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: ${surfaceColor}; border-radius: 6px; margin-bottom: 8px;">
+                <span style="font-size: ${fontSize * 0.9}px;">${player.player_name}</span>
+                <button onclick="handleDeletePlayer('${player.id}')" data-delete-player="${player.id}"
+                        style="background: #ef4444; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: ${fontSize * 0.8}px; cursor: pointer;">
+                  Eliminar
+                </button>
+              </div>
+            `;
+          });
+
+          html += `
+                    </div>
+                  </div>
+                </div>
+
+                <div style="background: ${bgColor}; border-radius: 12px; padding: 20px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+                    <h4 style="font-size: ${fontSize * 1.1}px; font-weight: 600; margin:0;">📊 Clasificación</h4>
+                    <div style="display:flex; align-items:center; gap:8px; background:${surfaceColor}; padding:8px 12px; border-radius:8px;">
+                      <span style="font-size:${fontSize * 0.85}px; font-weight:600;">Clasifican:</span>
+                      <select onchange="setQualifyCount('${currentTournament}', '${groupLetter}', this.value)"
+                        style="background:${bgColor}; color:${textColor}; border:2px solid ${primaryColor}; border-radius:6px; padding:4px 8px; font-size:${fontSize * 0.9}px; font-weight:700;">
+                        ${[1,2,3,4,5,6,7,8].map(n => `<option value="${n}" ${getQualifyCount(currentTournament, groupLetter) === n ? 'selected' : ''}>${n} jugador${n>1?'es':''}</option>`).join('')}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <thead>
+                        <tr style="background: ${surfaceColor};">
+                          <th style="padding: 10px; text-align: left; font-size: ${fontSize * 0.85}px;">#</th>
+                          <th style="padding: 10px; text-align: left; font-size: ${fontSize * 0.85}px;">Jugador</th>
+                          <th style="padding: 10px; text-align: center; font-size: ${fontSize * 0.85}px;">PJ</th>
+                          <th style="padding: 10px; text-align: center; font-size: ${fontSize * 0.85}px;">G</th>
+                          <th style="padding: 10px; text-align: center; font-size: ${fontSize * 0.85}px;">P</th>
+                          <th style="padding: 10px; text-align: center; font-size: ${fontSize * 0.85}px; font-weight: 700;">PTS</th>
+                          <th style="padding: 10px; text-align: center; font-size: ${fontSize * 0.85}px; font-weight: 700;">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+          `;
+
+          const qualifyCount = getQualifyCount(currentTournament, groupLetter);
+          standings.forEach((player, index) => {
+            const passes = index < qualifyCount;
+            const rowBg = passes ? (index % 2 === 0 ? '#10b98118' : '#10b98108') : (index % 2 === 0 ? surfaceColor : 'transparent');
+            const leftBorder = passes ? 'border-left: 4px solid #10b981;' : 'border-left: 4px solid transparent;';
+            const statusHtml = passes
+              ? '<span style="background:#10b981;color:white;padding:3px 8px;border-radius:20px;font-size:'+(fontSize*0.75)+'px;font-weight:700;white-space:nowrap;">✅ PASA</span>'
+              : '<span style="background:#ef444420;color:#ef4444;padding:3px 8px;border-radius:20px;font-size:'+(fontSize*0.75)+'px;font-weight:700;white-space:nowrap;">❌ NO PASA</span>';
+
+            html += `
+              <tr style="background: ${rowBg}; ${leftBorder}">
+                <td style="padding: 10px; font-size: ${fontSize * 0.9}px; font-weight:${passes?'700':'400'};">${index + 1}</td>
+                <td style="padding: 10px; font-size: ${fontSize * 0.9}px; font-weight: 600;">${player.name}</td>
+                <td style="padding: 10px; text-align: center; font-size: ${fontSize * 0.9}px;">${player.matchesPlayed}</td>
+                <td style="padding: 10px; text-align: center; font-size: ${fontSize * 0.9}px; color: #10b981;">${player.wins}</td>
+                <td style="padding: 10px; text-align: center; font-size: ${fontSize * 0.9}px; color: #ef4444;">${player.losses}</td>
+                <td style="padding: 10px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">${player.points}</td>
+                <td style="padding: 10px; text-align: center;">${statusHtml}</td>
+              </tr>
+            `;
+          });
+
+          html += `
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style="background: ${bgColor}; border-radius: 12px; padding: 20px; grid-column: 1 / -1;">
+                  <h4 style="font-size: ${fontSize * 1.1}px; font-weight: 600; margin-bottom: 16px;">📋 Fixture Round Robin</h4>
+          `;
+
+          if (groupPlayers.length < 2) {
+            html += `<p style="font-size: ${fontSize * 0.9}px; opacity: 0.7;">Agrega al menos 2 jugadores para generar el fixture</p>`;
+          } else {
+            html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">`;
+            draw.forEach((match, index) => {
+              const existingMatch = matches.find(m =>
+                (m.player1 === match.player1 && m.player2 === match.player2) ||
+                (m.player1 === match.player2 && m.player2 === match.player1)
+              );
+
+              const pendingMatch = pendingMatches.find(m =>
+                (m.player1 === match.player1 && m.player2 === match.player2) ||
+                (m.player1 === match.player2 && m.player2 === match.player1)
+              );
+
+              let matchBg = surfaceColor;
+              let statusText = '⏳ Pendiente';
+
+              if (existingMatch) {
+                matchBg = '#10b98120';
+                statusText = `✅ ${existingMatch.score}`;
+              } else if (pendingMatch) {
+                matchBg = '#fef3c7';
+                statusText = '⚠️ Esperando validación';
+              }
+
+              html += `
+                <div style="background: ${matchBg}; padding: 14px; border-radius: 8px; border: 2px solid ${secondaryColor};">
+                  <div style="font-size: ${fontSize * 0.8}px; opacity: 0.7; margin-bottom: 6px;">Partido ${index + 1}</div>
+                  <div style="font-size: ${fontSize * 0.95}px; font-weight: 600; margin-bottom: 3px;">${match.player1}</div>
+                  <div style="font-size: ${fontSize * 0.85}px; margin-bottom: 3px;">vs</div>
+                  <div style="font-size: ${fontSize * 0.95}px; font-weight: 600; margin-bottom: 6px;">${match.player2}</div>
+                  <div style="font-size: ${fontSize * 0.8}px; color: ${primaryColor};">${statusText}</div>
+                </div>
+              `;
+            });
+            html += `</div>`;
+          }
+
+          html += `
+                </div>
+              </div>
+            </div>
+          `;
+          });
+
+          html += `
+
+            <!-- Cargar Resultados -->
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">📝 Cargar Resultado</h3>
+          `;
+
+          const allTournamentPlayers = getTournamentPlayers(currentTournament);
+          if (allTournamentPlayers.length < 2) {
+            html += `<p style="font-size: ${fontSize}px; opacity: 0.7;">Agrega al menos 2 jugadores para cargar resultados</p>`;
+          } else {
+            // Construir opciones para todos los jugadores del torneo, agrupados por grupo
+            let player1Options = '<option value="">Jugador 1</option>';
+            let player2Options = '<option value="">Jugador 2</option>';
+            let winnerOptions = '<option value="">Ganador</option>';
+
+            const allGroups = {};
+            groupLetters.forEach(letter => {
+              allGroups[letter] = getTournamentPlayers(currentTournament, letter);
+            });
+
+            groupLetters.forEach(letter => {
+              const groupPlayers = allGroups[letter];
+              const groupName = window.elementSdk.config[`group_${letter.toLowerCase()}_name`] || `Grupo ${letter}`;
+              const groupOptionsHtml = groupPlayers.map(p => `<option value="${p.player_name}">${p.player_name}</option>`).join('');
+
+              player1Options += `<optgroup label="${groupName}">${groupOptionsHtml}</optgroup>`;
+              player2Options += `<optgroup label="${groupName}">${groupOptionsHtml}</optgroup>`;
+              winnerOptions += `<optgroup label="${groupName}">${groupOptionsHtml}</optgroup>`;
+            });
+
+            html += `
+              <form onsubmit="handleAddMatch(event, '${currentTournament}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <select name="player1" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  ${player1Options}
+                </select>
+                <select name="player2" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  ${player2Options}
+                </select>
+                <input type="text" name="score" placeholder="Resultado (ej: 6-4, 6-3)" required
+                       style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                <select name="winner" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  ${winnerOptions}
+                </select>
+                <select name="setsWon" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Sets Ganados</option>
+                  <option value="2">2 sets</option>
+                  <option value="1">1 set</option>
+                  <option value="0">0 sets</option>
+                </select>
+                <select name="setsLost" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Sets Perdidos</option>
+                  <option value="0">0 sets</option>
+                  <option value="1">1 set</option>
+                  <option value="2">2 sets</option>
+                </select>
+                <button type="submit" data-action="add-match-${currentTournament}"
+                        style="grid-column: 1 / -1; background: ${primaryColor}; color: white; padding: 12px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer;">
+                  Guardar Resultado (Requiere Validación)
+                </button>
+              </form>
+            `;
+          }
+
+          html += `</div>`;
+
+          // Resultados Validados
+          html += `
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">✅ Resultados Validados</h3>
+          `;
+
+          if (matches.length === 0) {
+            html += `<p style="font-size: ${fontSize}px; opacity: 0.7;">No hay resultados validados aún</p>`;
+          } else {
+            html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+            matches.forEach(match => {
+              html += `
+                <div style="background: ${bgColor}; padding: 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #10b981;">
+                  <div>
+                    <div style="font-size: ${fontSize}px; font-weight: 600;">${match.player1} vs ${match.player2}</div>
+                    <div style="font-size: ${fontSize * 0.9}px; margin-top: 4px;">Resultado: ${match.score}</div>
+                    <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor}; margin-top: 4px;">Ganador: ${match.winner}</div>
+                  </div>
+                  <button onclick="handleDeleteMatch('${match.id}')" data-delete-match="${match.id}"
+                          style="background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; cursor: pointer;">
+                    Eliminar
+                  </button>
+                </div>
+              `;
+            });
+            html += `</div>`;
+          }
+
+          html += `</div>`;
+
+          // Resultados Pendientes de Validación
+          if (pendingMatches.length > 0) {
+            html += `
+              <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+                <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px; color: #92400e;">⚠️ Resultados Pendientes de Validación</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+            `;
+
+            pendingMatches.forEach(match => {
+              html += `
+                <div style="background: ${bgColor}; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                  <div style="font-size: ${fontSize}px; font-weight: 600; margin-bottom: 8px;">${match.player1} vs ${match.player2}</div>
+                  <div style="font-size: ${fontSize * 0.9}px; margin-bottom: 4px;">Resultado: ${match.score}</div>
+                  <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor}; margin-bottom: 8px;">Ganador: ${match.winner}</div>
+                  <div style="font-size: ${fontSize * 0.8}px; color: #92400e; padding: 8px; background: #fef3c7; border-radius: 4px;">
+                    Esperando validación del rival
+                  </div>
+                </div>
+              `;
+            });
+
+            html += `
+                </div>
+              </div>
+            `;
+          }
+
+          // ── Bracket Manual ──
+          var bk = getBracket(currentTournament);
+          var playerOpts = '<option value="">— Jugador —</option>' + allPlayerProfiles.map(function(p){ return '<option value="'+p.player_name+'">'+p.player_name+'</option>'; }).join('');
+
+          var _makeSlot = function(ronda, idx, val) {
+            var sel = '<select onchange="setBracketSlot(\'' + currentTournament + '\',\'' + ronda + '\',' + idx + ',this.value)" style="width:100%;background:'+bgColor+';color:'+textColor+';border:2px solid '+(val?'#10b981':secondaryColor)+';border-radius:6px;padding:8px;font-size:'+(fontSize*0.85)+'px;font-weight:'+(val?'700':'400')+';">' + playerOpts + '</select>';
+            if(val) sel = sel.replace('value="'+val+'"','value="'+val+'" selected');
+            return sel;
+          };
+          var _makeMatch = function(ronda, i1, i2, label, color) {
+            var p1=bk[ronda][i1]||'', p2=bk[ronda][i2]||'';
+            return '<div style="margin-bottom:14px;"><div style="font-size:'+(fontSize*0.72)+'px;color:'+color+';font-weight:700;margin-bottom:5px;letter-spacing:0.5px;">'+label+'</div>'
+              +'<div style="background:'+bgColor+';border:2px solid '+(p1&&p2?color:secondaryColor)+';border-radius:8px;padding:12px;">'
+              +_makeSlot(ronda,i1,p1)
+              +'<div style="font-size:'+(fontSize*0.7)+'px;opacity:0.5;margin:5px 0;text-align:center;font-weight:600;">VS</div>'
+              +_makeSlot(ronda,i2,p2)
+              +'</div></div>';
+          };
+          var octHtml=''; for(var oi=0;oi<8;oi++) octHtml+=_makeMatch('octavos',oi*2,oi*2+1,'OCTAVOS '+(oi+1),'#6366f1');
+          var cuaHtml=''; for(var ci=0;ci<4;ci++) cuaHtml+=_makeMatch('cuartos',ci*2,ci*2+1,'CUARTOS '+(ci+1),'#3b82f6');
+          var semiHtml=_makeMatch('semis',0,1,'SEMIFINAL 1','#10b981')+_makeMatch('semis',2,3,'SEMIFINAL 2','#10b981');
+          var finalHtml=_makeMatch('final',0,1,'FINAL','#f59e0b');
+          var campVal=bk.campeon||'';
+          var campSelect='<select onchange="setBracketSlot(\'' + currentTournament + '\',\'campeon\',0,this.value)" style="width:100%;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#000;border:none;border-radius:8px;padding:12px;font-size:'+(fontSize)+'px;font-weight:700;text-align:center;">' + playerOpts + '</select>';
+          if(campVal) campSelect=campSelect.replace('value="'+campVal+'"','value="'+campVal+'" selected');
+
+          // Build previous rounds columns
+          var prevRoundsHtml = '';
+          var prevRoundColors = ['#ec4899','#8b5cf6','#06b6d4','#f97316','#84cc16'];
+          (bk.prevRounds||[]).forEach(function(pr, ri) {
+            var col = prevRoundColors[ri % prevRoundColors.length];
+            var matchesHtml = '';
+            for(var mi=0; mi<8; mi++) {
+              var s1=pr.slots[mi*2]||'', s2=pr.slots[mi*2+1]||'';
+              var sl1='<select onchange="setPrevRoundSlot(\''+currentTournament+'\','+ri+','+(mi*2)+',this.value)" style="width:100%;background:'+bgColor+';color:'+textColor+';border:2px solid '+(s1?col:secondaryColor)+';border-radius:6px;padding:8px;font-size:'+(fontSize*0.85)+'px;font-weight:'+(s1?'700':'400')+';">'+playerOpts+'</select>';
+              var sl2='<select onchange="setPrevRoundSlot(\''+currentTournament+'\','+ri+','+(mi*2+1)+',this.value)" style="width:100%;background:'+bgColor+';color:'+textColor+';border:2px solid '+(s2?col:secondaryColor)+';border-radius:6px;padding:8px;font-size:'+(fontSize*0.85)+'px;font-weight:'+(s2?'700':'400')+';">'+playerOpts+'</select>';
+              if(s1) sl1=sl1.replace('value="'+s1+'"','value="'+s1+'" selected');
+              if(s2) sl2=sl2.replace('value="'+s2+'"','value="'+s2+'" selected');
+              matchesHtml+='<div style="margin-bottom:14px;"><div style="font-size:'+(fontSize*0.72)+'px;color:'+col+';font-weight:700;margin-bottom:5px;">PARTIDO '+(mi+1)+'</div>'
+                +'<div style="background:'+bgColor+';border:2px solid '+((s1&&s2)?col:secondaryColor)+';border-radius:8px;padding:12px;">'
+                +sl1+'<div style="font-size:'+(fontSize*0.7)+'px;opacity:0.5;margin:5px 0;text-align:center;font-weight:600;">VS</div>'+sl2
+                +'</div></div>';
+            }
+            prevRoundsHtml+='<div style="flex:1;min-width:200px;">'
+              +'<div style="text-align:center;font-size:'+(fontSize*0.78)+'px;font-weight:700;color:'+col+';margin-bottom:8px;padding:5px;background:'+col+'15;border-radius:6px;display:flex;align-items:center;gap:6px;justify-content:center;">'
+              +'<input value="'+pr.label+'" onchange="setPrevRoundLabel(\''+currentTournament+'\','+ri+',this.value)" style="background:transparent;border:none;border-bottom:2px solid '+col+';color:'+col+';font-weight:700;font-size:'+(fontSize*0.78)+'px;text-align:center;width:120px;outline:none;">'
+              +'<button onclick="removePrevRound(\''+currentTournament+'\','+ri+')" title="Eliminar ronda" style="background:#ef4444;color:white;border:none;border-radius:4px;width:20px;height:20px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>'
+              +'</div>'
+              +matchesHtml+'</div>';
+          });
+
+          html += '<div style="background:'+surfaceColor+';border-radius:12px;padding:24px;margin-bottom:24px;">'
+            +'<h3 style="font-size:'+(fontSize*1.4)+'px;font-weight:700;margin-bottom:8px;text-align:center;color:'+primaryColor+';">🏆 Bracket de Eliminación Directa</h3>'
+            +'<p style="text-align:center;font-size:'+(fontSize*0.85)+'px;opacity:0.7;margin-bottom:16px;">Selecciona manualmente los jugadores en cada ronda</p>'
+            +'<div style="text-align:center;margin-bottom:20px;">'
+            +'<button onclick="addPrevRound(\''+currentTournament+'\')" style="background:'+primaryColor+';color:white;border:none;border-radius:8px;padding:10px 22px;font-size:'+(fontSize*0.9)+'px;font-weight:600;cursor:pointer;">+ Agregar Ronda Previa</button>'
+            +'</div>'
+            +'<div style="overflow-x:auto;"><div style="display:flex;gap:20px;min-width:860px;align-items:flex-start;justify-content:center;">'
+
+            +prevRoundsHtml
+
+            +'<div style="flex:1;min-width:200px;">'
+            +'<div style="text-align:center;font-size:'+(fontSize*0.78)+'px;font-weight:700;color:#6366f1;margin-bottom:12px;padding:5px;background:#6366f115;border-radius:6px;">OCTAVOS DE FINAL</div>'
+            +octHtml+'</div>'
+
+            +'<div style="flex:1;min-width:200px;margin-top:28px;">'
+            +'<div style="text-align:center;font-size:'+(fontSize*0.78)+'px;font-weight:700;color:#3b82f6;margin-bottom:12px;padding:5px;background:#3b82f615;border-radius:6px;">CUARTOS DE FINAL</div>'
+            +cuaHtml+'</div>'
+
+            +'<div style="flex:1;min-width:200px;margin-top:56px;">'
+            +'<div style="text-align:center;font-size:'+(fontSize*0.78)+'px;font-weight:700;color:#10b981;margin-bottom:12px;padding:5px;background:#10b98115;border-radius:6px;">SEMIFINALES</div>'
+            +semiHtml+'</div>'
+
+            +'<div style="flex:1;min-width:200px;margin-top:84px;">'
+            +'<div style="text-align:center;font-size:'+(fontSize*0.78)+'px;font-weight:700;color:#f59e0b;margin-bottom:12px;padding:5px;background:#f59e0b15;border-radius:6px;">🏆 FINAL</div>'
+            +finalHtml
+            +'<div style="margin-top:16px;">'
+            +'<div style="font-size:'+(fontSize*0.78)+'px;font-weight:700;color:#fbbf24;margin-bottom:8px;text-align:center;">🥇 CAMPEÓN</div>'
+            +campSelect
+            +(campVal?'<div style="margin-top:12px;padding:14px;background:linear-gradient(135deg,#fbbf24,#f59e0b);border-radius:10px;text-align:center;"><div style="font-size:'+(fontSize*0.8)+'px;color:#000;font-weight:600;">🏆 CAMPEÓN</div><div style="font-size:'+(fontSize*1.3)+'px;color:#000;font-weight:700;">'+campVal+'</div></div>':'')
+            +'</div></div>'
+
+            +'</div></div>'
+            +'<div style="margin-top:16px;text-align:center;">'
+            +'<button onclick="resetBracket(\'' + currentTournament + '\')" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:10px 20px;font-size:'+(fontSize*0.85)+'px;cursor:pointer;">🗑️ Limpiar Bracket</button>'
+            +'</div></div>';
+
+        } else {
+
+          // Vista sin grupos
+          const players = getTournamentPlayers(currentTournament);
+          const matches = getTournamentMatches(currentTournament).filter(m => isRecordValidated(m));
+          const pendingMatches = getTournamentMatches(currentTournament).filter(m => isRecordPendingValidation(m) && !isRecordValidated(m));
+          const standings = calculateStandings(currentTournament);
+          const draw = generateRoundRobinDraw(players);
+          const maxPlayers = tournamentSettings[`${currentTournament}_max`] || 10;
+
+          html += `
+            <button onclick="backToTournaments()" style="background: ${secondaryColor}; color: white; padding: 10px 20px; border: none; border-radius: 6px; margin-bottom: 24px; font-size: ${fontSize}px; cursor: pointer;">
+              ← Volver a Torneos
+            </button>
+
+            <h2 style="font-size: ${fontSize * 1.75}px; font-weight: 600; margin-bottom: 24px;">${tournament.name}</h2>
+            <!-- Foto del torneo en el detalle -->
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;background:${surfaceColor};border-radius:12px;padding:16px;flex-wrap:wrap;">
+              <div style="position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,${primaryColor}22,${secondaryColor}44);display:flex;align-items:center;justify-content:center;border:2px solid ${secondaryColor};">
+                ${getTournamentPhoto(currentTournament) ? `
+                  <img src="${getTournamentPhoto(currentTournament)}" alt="${tournament.name}" style="width:100%;height:100%;object-fit:cover;">
+                  <label style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.65);color:white;text-align:center;padding:3px;font-size:11px;cursor:pointer;">📷<input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;"></label>
+                ` : `
+                  <label style="cursor:pointer;text-align:center;padding:6px;"><div style="font-size:28px;opacity:0.35;">🏆</div><div style="font-size:10px;opacity:0.6;margin-top:2px;">Foto</div><input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;"></label>
+                `}
+              </div>
+              <div>
+                <p style="margin:0 0 8px;font-size:${fontSize*0.85}px;opacity:0.65;">Foto del torneo</p>
+                <label style="background:${primaryColor};color:white;border:none;border-radius:6px;padding:7px 14px;font-size:${fontSize*0.85}px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+                  📷 ${getTournamentPhoto(currentTournament) ? 'Cambiar foto' : 'Subir foto'}
+                  <input type="file" accept="image/*" capture="environment" onchange="handleTournamentPhotoUpload('${currentTournament}', event)" style="display:none;">
+                </label>
+                ${getTournamentPhoto(currentTournament) ? `<button onclick="removeTournamentPhoto('${currentTournament}')" style="background:#ef4444;color:white;border:none;border-radius:6px;padding:7px 12px;font-size:${fontSize*0.85}px;cursor:pointer;margin-left:8px;">🗑️ Quitar</button>` : ''}
+              </div>
+            </div>
+
+            <!-- Panel de Configuración de Grupos y Jugadores -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+              <div style="background: linear-gradient(135deg, ${primaryColor}, #2563eb); border-radius: 12px; padding: 20px; color: white; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="flex: 1;">
+                  <div style="font-size: ${fontSize * 0.9}px; opacity: 0.9; margin-bottom: 4px; font-weight: 500;">⚙️ Cantidad de Grupos</div>
+                  <p style="font-size: ${fontSize * 0.8}px; opacity: 0.8; margin: 0;">Ajusta cuántos grupos tendrá el torneo</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button onclick="updateGroupCount('${currentTournament}', ${1 - 1})" style="background: white; color: ${primaryColor}; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">−</button>
+                  <input type="number" id="group-count-input" min="1" max="8" value="1"
+                         onchange="updateGroupCount('${currentTournament}', parseInt(this.value))"
+                         style="background: white; color: ${primaryColor}; border: 2px solid white; border-radius: 6px; padding: 8px 12px; font-size: ${fontSize * 1.1}px; font-weight: 700; width: 60px; text-align: center;">
+                  <button onclick="updateGroupCount('${currentTournament}', ${1 + 1})" style="background: white; color: ${primaryColor}; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+
+              <div style="background: linear-gradient(135deg, #10b981, #059669); border-radius: 12px; padding: 20px; color: white; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                <div style="flex: 1;">
+                  <div style="font-size: ${fontSize * 0.9}px; opacity: 0.9; margin-bottom: 4px; font-weight: 500;">👥 Máximo de Jugadores</div>
+                  <p style="font-size: ${fontSize * 0.8}px; opacity: 0.8; margin: 0;">Límite de jugadores en este torneo</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button onclick="updateMaxPlayers('${currentTournament}', ${maxPlayers - 1})" style="background: white; color: #10b981; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">−</button>
+                  <input type="number" id="max-players-input" min="2" max="50" value="${maxPlayers}"
+                         onchange="updateMaxPlayers('${currentTournament}', parseInt(this.value))"
+                         style="background: white; color: #10b981; border: 2px solid white; border-radius: 6px; padding: 8px 12px; font-size: ${fontSize * 1.1}px; font-weight: 700; width: 60px; text-align: center;">
+                  <button onclick="updateMaxPlayers('${currentTournament}', ${maxPlayers + 1})" style="background: white; color: #10b981; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: ${fontSize * 1.2}px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
+                </div>
+              </div>
+            </div>
+
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">➕ Agregar Jugador</h3>
+              ${players.length >= maxPlayers ? `<p style="color: #fbbf24; font-size: ${fontSize * 0.9}px; margin-bottom: 12px;">⚠️ Máximo ${maxPlayers} jugadores alcanzado</p>` : ''}
+              <form onsubmit="handleAddPlayer(event, '${currentTournament}')" style="display: flex; flex-direction: column; gap: 12px;">
+                <select name="playerName" required
+                        ${players.length >= maxPlayers ? 'disabled' : ''}
+                        style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Seleccionar jugador</option>
+          `;
+
+          allPlayerProfiles.forEach(profile => {
+            html += `<option value="${profile.player_name}">${profile.player_name}</option>`;
+          });
+
+          html += `
+                </select>
+                <button type="submit" data-action="add-player-${currentTournament}"
+                        ${players.length >= maxPlayers ? 'disabled' : ''}
+                        style="background: ${primaryColor}; color: white; padding: 12px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer; opacity: ${players.length >= maxPlayers ? '0.5' : '1'};">
+                  Agregar Jugador
+                </button>
+              </form>
+
+              <div style="margin-top: 20px;">
+                <h4 style="font-size: ${fontSize * 1.1}px; font-weight: 600; margin-bottom: 12px;">Jugadores (${players.length}/${maxPlayers})</h4>
+                <div style="max-height: 300px; overflow-y: auto;">
+          `;
+
+          players.forEach(player => {
+            html += `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: ${bgColor}; border-radius: 6px; margin-bottom: 8px;">
+                <span style="font-size: ${fontSize}px;">${player.player_name}</span>
+                <button onclick="handleDeletePlayer('${player.id}')" data-delete-player="${player.id}"
+                        style="background: #ef4444; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: ${fontSize * 0.85}px; cursor: pointer;">
+                  Eliminar
+                </button>
+              </div>
+            `;
+          });
+
+          html += `
+                </div>
+              </div>
+            </div>
+
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">🏆 Tabla de Clasificación</h3>
+              <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead>
+                    <tr style="background: ${bgColor};">
+                      <th style="padding: 12px; text-align: left; font-size: ${fontSize * 0.9}px;">#</th>
+                      <th style="padding: 12px; text-align: left; font-size: ${fontSize * 0.9}px;">Jugador</th>
+                      <th style="padding: 12px; text-align: center; font-size: ${fontSize * 0.9}px;">PJ</th>
+                      <th style="padding: 12px; text-align: center; font-size: ${fontSize * 0.9}px;">G</th>
+                      <th style="padding: 12px; text-align: center; font-size: ${fontSize * 0.9}px;">P</th>
+                      <th style="padding: 12px; text-align: center; font-size: ${fontSize * 0.9}px; font-weight: 700;">PTS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+          `;
+
+          standings.forEach((player, index) => {
+            const rowBg = index % 2 === 0 ? bgColor : 'transparent';
+            html += `
+              <tr style="background: ${rowBg};">
+                <td style="padding: 12px; font-size: ${fontSize}px;">${index + 1}</td>
+                <td style="padding: 12px; font-size: ${fontSize}px; font-weight: 600;">${player.name}</td>
+                <td style="padding: 12px; text-align: center; font-size: ${fontSize}px;">${player.matchesPlayed}</td>
+                <td style="padding: 12px; text-align: center; font-size: ${fontSize}px; color: #10b981;">${player.wins}</td>
+                <td style="padding: 12px; text-align: center; font-size: ${fontSize}px; color: #ef4444;">${player.losses}</td>
+                <td style="padding: 12px; text-align: center; font-size: ${fontSize}px; font-weight: 700;">${player.points}</td>
+              </tr>
+            `;
+          });
+
+          html += `
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">📋 Fixture Round Robin</h3>
+          `;
+
+          if (players.length < 2) {
+            html += `<p style="font-size: ${fontSize}px; opacity: 0.7;">Agrega al menos 2 jugadores para generar el fixture</p>`;
+          } else {
+            html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px;">`;
+            draw.forEach((match, index) => {
+              const existingMatch = matches.find(m =>
+                (m.player1 === match.player1 && m.player2 === match.player2) ||
+                (m.player1 === match.player2 && m.player2 === match.player1)
+              );
+
+              const pendingMatch = pendingMatches.find(m =>
+                (m.player1 === match.player1 && m.player2 === match.player2) ||
+                (m.player1 === match.player2 && m.player2 === match.player1)
+              );
+
+              let matchBg = bgColor;
+              let statusText = '⏳ Pendiente';
+
+              if (existingMatch) {
+                matchBg = '#10b98120';
+                statusText = `✅ ${existingMatch.score}`;
+              } else if (pendingMatch) {
+                matchBg = '#fef3c7';
+                statusText = '⚠️ Esperando validación';
+              }
+
+              html += `
+                <div style="background: ${matchBg}; padding: 16px; border-radius: 8px; border: 2px solid ${secondaryColor};">
+                  <div style="font-size: ${fontSize * 0.85}px; opacity: 0.7; margin-bottom: 8px;">Partido ${index + 1}</div>
+                  <div style="font-size: ${fontSize}px; font-weight: 600; margin-bottom: 4px;">${match.player1}</div>
+                  <div style="font-size: ${fontSize * 0.9}px; margin-bottom: 4px;">vs</div>
+                  <div style="font-size: ${fontSize}px; font-weight: 600; margin-bottom: 8px;">${match.player2}</div>
+                  <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor};">${statusText}</div>
+                </div>
+              `;
+            });
+            html += `</div>`;
+          }
+
+          html += `</div>`;
+
+          html += `
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">📝 Cargar Resultado</h3>
+          `;
+
+          if (players.length < 2) {
+            html += `<p style="font-size: ${fontSize}px; opacity: 0.7;">Agrega al menos 2 jugadores para cargar resultados</p>`;
+          } else {
+            html += `
+              <form onsubmit="handleAddMatch(event, '${currentTournament}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <select name="player1" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Jugador 1</option>
+            `;
+            players.forEach(player => {
+              html += `<option value="${player.player_name}">${player.player_name}</option>`;
+            });
+            html += `
+                </select>
+                <select name="player2" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Jugador 2</option>
+            `;
+            players.forEach(player => {
+              html += `<option value="${player.player_name}">${player.player_name}</option>`;
+            });
+            html += `
+                </select>
+                <input type="text" name="score" placeholder="Resultado (ej: 6-4, 6-3)" required
+                       style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                <select name="winner" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Ganador</option>
+            `;
+            players.forEach(player => {
+              html += `<option value="${player.player_name}">${player.player_name}</option>`;
+            });
+            html += `
+                </select>
+                <select name="setsWon" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Sets Ganados</option>
+                  <option value="2">2 sets</option>
+                  <option value="1">1 set</option>
+                  <option value="0">0 sets</option>
+                </select>
+                <select name="setsLost" required style="background: ${bgColor}; color: ${textColor}; border: 2px solid ${secondaryColor}; border-radius: 6px; padding: 12px; font-size: ${fontSize}px;">
+                  <option value="">Sets Perdidos</option>
+                  <option value="0">0 sets</option>
+                  <option value="1">1 set</option>
+                  <option value="2">2 sets</option>
+                </select>
+                <button type="submit" data-action="add-match-${currentTournament}"
+                        style="grid-column: 1 / -1; background: ${primaryColor}; color: white; padding: 12px; border: none; border-radius: 6px; font-size: ${fontSize}px; font-weight: 600; cursor: pointer;">
+                  Guardar Resultado (Requiere Validación)
+                </button>
+              </form>
+            `;
+          }
+
+          html += `</div>`;
+
+          // Resultados Validados
+          html += `
+            <div style="background: ${surfaceColor}; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+              <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px;">✅ Resultados Validados</h3>
+          `;
+
+          if (matches.length === 0) {
+            html += `<p style="font-size: ${fontSize}px; opacity: 0.7;">No hay resultados validados aún</p>`;
+          } else {
+            html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+            matches.forEach(match => {
+              html += `
+                <div style="background: ${bgColor}; padding: 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #10b981;">
+                  <div>
+                    <div style="font-size: ${fontSize}px; font-weight: 600;">${match.player1} vs ${match.player2}</div>
+                    <div style="font-size: ${fontSize * 0.9}px; margin-top: 4px;">Resultado: ${match.score}</div>
+                    <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor}; margin-top: 4px;">Ganador: ${match.winner}</div>
+                  </div>
+                  <button onclick="handleDeleteMatch('${match.id}')" data-delete-match="${match.id}"
+                          style="background: #ef4444; color: white; padding: 8px 16px; border: none; border-radius: 6px; font-size: ${fontSize * 0.85}px; cursor: pointer;">
+                    Eliminar
+                  </button>
+                </div>
+              `;
+            });
+            html += `</div>`;
+          }
+
+          html += `</div>`;
+
+          // Resultados Pendientes
+          if (pendingMatches.length > 0) {
+            html += `
+              <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 24px;">
+                <h3 style="font-size: ${fontSize * 1.25}px; font-weight: 600; margin-bottom: 16px; color: #92400e;">⚠️ Resultados Pendientes de Validación</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+            `;
+
+            pendingMatches.forEach(match => {
+              html += `
+                <div style="background: ${bgColor}; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                  <div style="font-size: ${fontSize}px; font-weight: 600; margin-bottom: 8px;">${match.player1} vs ${match.player2}</div>
+                  <div style="font-size: ${fontSize * 0.9}px; margin-bottom: 4px;">Resultado: ${match.score}</div>
+                  <div style="font-size: ${fontSize * 0.85}px; color: ${primaryColor}; margin-bottom: 8px;">Ganador: ${match.winner}</div>
+                  <div style="font-size: ${fontSize * 0.8}px; color: #92400e; padding: 8px; background: #fef3c7; border-radius: 4px;">
+                    Esperando validación del rival
+                  </div>
+                </div>
+              `;
+            });
+
+            html += `
+                </div>
+              </div>
+            `;
+          }
+        }
+      }
+
+      html += `</div>`;
+      app.innerHTML = html;
+      app.querySelectorAll('textarea').forEach(autoResizeTextarea);
+    }
+
+    function navigateToView(view) {
+      currentView = view;
+      render();
+    }
+
+    function navigateToTournament(tournamentId) {
+      currentView = 'tournament-detail';
+      currentTournament = tournamentId;
+      render();
+    }
+
+    function backToMenu() {
+      currentView = 'menu';
+      render();
+    }
+
+    function backToTournaments() {
+      currentView = 'tournaments';
+      currentTournament = null;
+      render();
+    }
+
+    function updateMaxPlayers(tournamentId, value) {
+      const numValue = Math.max(2, Math.min(50, parseInt(value) || 10));
+      tournamentSettings[`${tournamentId}_max`] = numValue;
+
+      const inputEl = document.getElementById('max-players-input');
+      if (inputEl) {
+        inputEl.value = numValue;
+      }
+
+      persistTournamentSettings();
+      render();
+    }
+
+    function updateMaxPlayersPerGroup(tournamentId, value) {
+      const numValue = Math.max(2, Math.min(20, parseInt(value) || 5));
+      tournamentSettings[`${tournamentId}_max`] = numValue;
+
+      const inputEl = document.getElementById('max-players-input');
+      if (inputEl) {
+        inputEl.value = numValue;
+      }
+
+      persistTournamentSettings();
+      render();
+    }
+
+    function updateGroupCount(tournamentId, currentValue) {
+      // Si es un número, úsalo directamente; si no, intenta parsearlo
+      let newValue;
+      if (typeof currentValue === 'number') {
+        newValue = currentValue;
+      } else {
+        newValue = parseInt(currentValue) || 2;
+      }
+
+      // Asegurar que esté dentro del rango válido
+      newValue = Math.max(1, Math.min(8, newValue));
+
+      tournamentSettings[`${tournamentId}_groups`] = newValue;
+
+      const inputEl = document.getElementById('group-count-input');
+      if (inputEl) {
+        inputEl.value = newValue;
+      }
+
+      persistTournamentSettings();
+      render();
+    }
+
+    function recalcRankingPositions() {
+      // Solo en modo admin y vista ranking
+      if (!isAdminLoggedIn || currentView !== 'ranking') return;
+      const table = document.querySelector('table');
+      if (!table) return;
+      const tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (rows.length === 0) return;
+
+      // Extraer datos de cada fila
+      const rowData = rows.map(row => {
+        const inputs = row.querySelectorAll('input');
+        const nameCell = row.querySelector('td:nth-child(2)');
+        const name = nameCell ? nameCell.textContent.trim().split('\n')[0].trim() : '';
+        const ptsInput = row.querySelector('td:nth-child(4) input');
+        const pgInput = row.querySelector('td:nth-child(6) input');
+        const ppInput = row.querySelector('td:nth-child(7) input');
+        const pts = ptsInput ? parseInt(ptsInput.value) || 0 : 0;
+        const pg = pgInput ? parseInt(pgInput.value) || 0 : 0;
+        const pp = ppInput ? parseInt(ppInput.value) || 0 : 0;
+        const ef = pg + pp > 0 ? parseFloat(((pg / (pg + pp)) * 100).toFixed(1)) : 0;
+        return { row, name, pts, pg, pp, ef };
+      });
+
+      // Ordenar por PTS -> PG -> EF (mismo criterio que buildPlayerRankings)
+      rowData.sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (b.pg !== a.pg) return b.pg - a.pg;
+        return b.ef - a.ef;
+      });
+
+      // Actualizar posiciones visualmente
+      rowData.forEach((data, idx) => {
+        const posCell = data.row.querySelector('td:nth-child(1)');
+        if (posCell) {
+          const posInput = posCell.querySelector('input');
+          const autoPos = idx + 1;
+          if (posInput) {
+            // Solo actualizar si el admin no editó manualmente la posición
+            const manualPos = parseInt(posInput.value);
+            const ovr = manualRankingOrder[data.name] || {};
+            if (ovr.pos === undefined || ovr.pos === null || ovr.pos === '') {
+              posInput.value = autoPos;
+            }
+          } else {
+            // Modo público (no debería pasar en admin, pero por si acaso)
+            posCell.innerHTML = '<span style="font-size:16px; display:inline-block; margin-right:4px;"></span><span style="font-weight:700; color:#3b82f6; font-size:14.4px;">' + autoPos + '</span>';
+          }
+        }
+      });
+    }
+
+    function editPlayer(playerId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para editar jugadores', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      selectedPlayerId = playerId;
+      render();
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
+    }
+
+    function cancelEditPlayer() {
+      selectedPlayerId = null;
+      render();
+    }
+
+    function handleAddPlayerProfile(event) {
+      event.preventDefault();
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para agregar jugadores', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const formData = new FormData(event.target);
+      const firstName = formData.get('firstName').trim();
+      const lastName = formData.get('lastName').trim();
+      const phone = formData.get('phone').trim();
+      const photoUrl = formData.get('photoUrl').trim();
+      const characteristics = formData.get('characteristics').trim();
+      const club = formData.get('club').trim();
+
+      if (firstName && lastName) {
+        addPlayerProfile(firstName, lastName, phone, photoUrl, characteristics, club);
+        event.target.reset();
+      }
+    }
+
+    function handleUpdatePlayerProfile(event) {
+      event.preventDefault();
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para actualizar jugadores', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const profileRecord = allPlayerProfiles.find(p => p.id === selectedPlayerId);
+      if (!profileRecord) return;
+
+      const formData = new FormData(event.target);
+      const firstName = formData.get('firstName').trim();
+      const lastName = formData.get('lastName').trim();
+      const phone = formData.get('phone').trim();
+      const photoUrl = formData.get('photoUrl').trim();
+      const characteristics = formData.get('characteristics').trim();
+      const club = formData.get('club').trim();
+
+      if (firstName && lastName) {
+        updatePlayerProfile(profileRecord, firstName, lastName, phone, photoUrl, characteristics, club);
+        event.target.reset();
+      }
+    }
+
+    function deletePlayerProfileById(playerId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para eliminar jugadores', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const profileRecord = allPlayerProfiles.find(p => p.id === playerId);
+      if (profileRecord) {
+        deletePlayerProfile(profileRecord);
+      }
+    }
+
+    function handleAddPlayer(event, tournamentId, group) {
+      event.preventDefault();
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para agregar jugadores al torneo', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const formData = new FormData(event.target);
+      const playerName = (formData.get('playerName') || '').trim();
+
+      if (playerName) {
+        addPlayer(tournamentId, playerName, group);
+        event.target.reset();
+      }
+    }
+
+    function handleDeletePlayer(playerId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para eliminar jugadores del torneo', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const playerRecord = allPlayers.find(p => p.id === playerId);
+      if (playerRecord) {
+        deletePlayer(playerRecord);
+      }
+    }
+
+    function handleAddMatch(event, tournamentId) {
+      event.preventDefault();
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para cargar resultados', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const formData = new FormData(event.target);
+      const player1 = formData.get('player1');
+      const player2 = formData.get('player2');
+      const score = (formData.get('score') || '').trim();
+      const winner = formData.get('winner');
+      const setsWon = formData.get('setsWon');
+      const setsLost = formData.get('setsLost');
+
+      if (player1 === player2) {
+        showMessage('Los jugadores deben ser diferentes', 'error');
+        return;
+      }
+
+      if (!setsWon || !setsLost) {
+        showMessage('Selecciona los sets ganados y perdidos', 'error');
+        return;
+      }
+      const totalSets = parseInt(setsWon) + parseInt(setsLost);
+      if (totalSets < 2 || totalSets > 3) {
+        showMessage('El total de sets debe ser 2 o 3', 'error');
+        return;
+      }
+
+      if (parseInt(setsWon) !== 2) {
+        showMessage('El ganador debe tener 2 sets ganados', 'error');
+        return;
+      }
+
+      if (player1 && player2 && score && winner && setsWon && setsLost) {
+        addMatch(tournamentId, player1, player2, score, winner, setsWon, setsLost);
+        event.target.reset();
+      }
+    }
+
+    function handleValidateMatch(matchId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para validar resultados', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const matchRecord = allMatches.find(m => m.id === matchId);
+      if (matchRecord) {
+        validateMatch(matchRecord);
+      }
+    }
+
+    function handleRejectMatch(matchId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para rechazar resultados', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const matchRecord = allMatches.find(m => m.id === matchId);
+      if (matchRecord) {
+        rejectMatch(matchRecord);
+      }
+    }
+
+    function handleDeleteMatch(matchId) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para eliminar resultados', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const matchRecord = allMatches.find(m => m.id === matchId);
+      if (matchRecord) {
+        deleteMatch(matchRecord);
+      }
+    }
+
+    async function handlePhotoUpload(event) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para subir fotos', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const file = event.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showMessage('Por favor selecciona un archivo de imagen válido', 'error');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        showMessage('La imagen es demasiado grande. Máximo 5MB', 'error');
+        return;
+      }
+      // Mostrar indicador de carga
+      const previewContainer = document.getElementById('photo-preview-container');
+      if (previewContainer) {
+        previewContainer.innerHTML = '<div style="padding:12px;opacity:0.7;">⏳ Subiendo imagen...</div>';
+      }
+      try {
+        const formData = new FormData();
+        formData.append('photo', file);
+        const res = await fetch('api.php?action=uploadPhoto', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Error al subir');
+        const photoUrl = json.url;
+        const photoUrlInput = document.getElementById('photoUrl');
+        if (photoUrlInput) photoUrlInput.value = photoUrl;
+        const config = window.elementSdk.config;
+        const surfaceColor = config.surface_color || defaultConfig.surface_color;
+        const fontSize = config.font_size || defaultConfig.font_size;
+        if (previewContainer) {
+          previewContainer.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: ${surfaceColor}; border-radius: 8px;">
+              <img src="${photoUrl}" alt="Preview" style="width: 80px; height: 80px; border-radius: 8px; object-fit: cover; border: 2px solid #10b981;">
+              <div>
+                <div style="font-size: ${fontSize * 0.9}px; font-weight: 600; color: #10b981; margin-bottom: 4px;">✅ Imagen subida</div>
+                <div style="font-size: ${fontSize * 0.8}px; opacity: 0.7;">${file.name}</div>
+                <div style="font-size: ${fontSize * 0.75}px; opacity: 0.6;">${(file.size / 1024).toFixed(0)} KB</div>
+              </div>
+            </div>`;
+        }
+        showMessage('Imagen subida correctamente', 'success');
+      } catch(e) {
+        if (previewContainer) previewContainer.innerHTML = '';
+        showMessage('Error al subir la imagen: ' + e.message, 'error');
+      }
+    }
+
+    function downloadBackup() {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para descargar respaldo', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const allData = [
+        ...allPlayers,
+        ...allMatches,
+        ...allPlayerProfiles,
+        ...allRankingOverrides,
+        ...allLegendOverrides,
+        ...allTournamentNameOverrides,
+        ...allTournamentPhotos
+      ];
+
+      const backupData = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        data: allData
+      };
+
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `torneo-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showMessage('Respaldo descargado correctamente', 'success');
+    }
+
+    async function restoreBackup(event) {
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para restaurar respaldo', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const backupData = JSON.parse(e.target.result);
+
+          if (!backupData.version || !backupData.data) {
+            showMessage('Archivo de respaldo inválido', 'error');
+            return;
+          }
+
+          const restoreBtn = document.querySelector('button[onclick*="restore-input"]');
+          if (restoreBtn) {
+            restoreBtn.disabled = true;
+            restoreBtn.innerHTML = '⏳ Restaurando...';
+          }
+
+          let successCount = 0;
+          let errorCount = 0;
+
+          for (const record of backupData.data) {
+            if (recordCount >= 999) {
+              showMessage(`Límite de 999 registros alcanzado. Restaurados ${successCount} de ${backupData.data.length} registros.`, 'error');
+              break;
+            }
+
+            const { __backendId, ...recordWithoutId } = record;
+
+            const result = await window.dataSdk.create(recordWithoutId);
+
+            if (result.isOk) {
+              successCount++;
+            } else {
+              errorCount++;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+
+          if (restoreBtn) {
+            restoreBtn.disabled = false;
+            restoreBtn.innerHTML = '📂 Restaurar Respaldo';
+          }
+
+          if (errorCount === 0) {
+            showMessage(`Respaldo restaurado correctamente: ${successCount} registros`, 'success');
+          } else {
+            showMessage(`Restauración parcial: ${successCount} éxitos, ${errorCount} errores`, 'error');
+          }
+
+          event.target.value = '';
+
+        } catch (error) {
+          showMessage('Error al leer el archivo de respaldo', 'error');
+          console.error(error);
+
+          const restoreBtn = document.querySelector('button[onclick*="restore-input"]');
+          if (restoreBtn) {
+            restoreBtn.disabled = false;
+            restoreBtn.innerHTML = '📂 Restaurar Respaldo';
+          }
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    async function onConfigChange(config) {
+      render();
+    }
+
+    window.elementSdk.init({
+      defaultConfig,
+      onConfigChange,
+      mapToCapabilities: (config) => ({
+        recolorables: [
+          {
+            get: () => config.background_color || defaultConfig.background_color,
+            set: (value) => {
+              config.background_color = value;
+              window.elementSdk.setConfig({ background_color: value });
+            }
+          },
+          {
+            get: () => config.surface_color || defaultConfig.surface_color,
+            set: (value) => {
+              config.surface_color = value;
+              window.elementSdk.setConfig({ surface_color: value });
+            }
+          },
+          {
+            get: () => config.text_color || defaultConfig.text_color,
+            set: (value) => {
+              config.text_color = value;
+              window.elementSdk.setConfig({ text_color: value });
+            }
+          },
+          {
+            get: () => config.primary_action_color || defaultConfig.primary_action_color,
+            set: (value) => {
+              config.primary_action_color = value;
+              window.elementSdk.setConfig({ primary_action_color: value });
+            }
+          },
+          {
+            get: () => config.secondary_action_color || defaultConfig.secondary_action_color,
+            set: (value) => {
+              config.secondary_action_color = value;
+              window.elementSdk.setConfig({ secondary_action_color: value });
+            }
+          }
+        ],
+        borderables: [],
+        fontEditable: {
+          get: () => config.font_family || defaultConfig.font_family,
+          set: (value) => {
+            config.font_family = value;
+            window.elementSdk.setConfig({ font_family: value });
+          }
+        },
+        fontSizeable: {
+          get: () => config.font_size || defaultConfig.font_size,
+          set: (value) => {
+            config.font_size = value;
+            window.elementSdk.setConfig({ font_size: value });
+          }
+        }
+      }),
+      mapToEditPanelValues: (config) => new Map([
+        ['app_title', config.app_title || defaultConfig.app_title],
+        ['tournament_1_name', config.tournament_1_name || defaultConfig.tournament_1_name],
+        ['tournament_2_name', config.tournament_2_name || defaultConfig.tournament_2_name],
+        ['tournament_3_name', config.tournament_3_name || defaultConfig.tournament_3_name],
+        ['tournament_4_name', config.tournament_4_name || defaultConfig.tournament_4_name],
+        ['tournament_5_name', config.tournament_5_name || defaultConfig.tournament_5_name],
+        ['tournament_6_name', config.tournament_6_name || defaultConfig.tournament_6_name],
+        ['tournament_7_name', config.tournament_7_name || defaultConfig.tournament_7_name],
+        ['group_a_name', config.group_a_name || defaultConfig.group_a_name],
+        ['group_b_name', config.group_b_name || defaultConfig.group_b_name]
+      ])
+    });
+
+    function handlePlayerSearch(query) {
+      playerSearchQuery = query;
+      // Update input value without full re-render for smooth typing
+      const input = document.getElementById('player-search-input');
+      const cursorPos = input ? input.selectionStart : null;
+      render();
+      // Restore focus and cursor position
+      const newInput = document.getElementById('player-search-input');
+      if (newInput) {
+        newInput.focus();
+        if (cursorPos !== null) {
+          try { newInput.setSelectionRange(cursorPos, cursorPos); } catch(e) {}
+        }
+      }
+    }
+
+    function autoCalcEF(playerName, inputEl) {
+      const row = inputEl && inputEl.closest ? inputEl.closest('tr') : null;
+      if (!row) return;
+      const pgInput = row.querySelector('input[data-rank-pg]');
+      const ppInput = row.querySelector('input[data-rank-pp]');
+      const efInput = row.querySelector('input[data-rank-ef]');
+      if (!pgInput || !ppInput || !efInput) return;
+      const pg = parseInt(pgInput.value) || 0;
+      const pp = parseInt(ppInput.value) || 0;
+      const total = pg + pp;
+      const newEf = total > 0 ? parseFloat(((pg / total) * 100).toFixed(1)) : 0;
+      efInput.value = newEf;
+      // Guardar en memoria también
+      if (!manualRankingOrder[playerName]) manualRankingOrder[playerName] = {};
+      manualRankingOrder[playerName]['ef'] = newEf;
+      if (!pendingRankingChanges[playerName]) pendingRankingChanges[playerName] = {};
+      pendingRankingChanges[playerName]['ef'] = newEf;
+    }
+
+    function saveRankingField(playerName, field, rawValue) {
+      // IGNORAR si el nombre es la plantilla sin interpolar (bug anterior)
+      if (playerName === '${safeName}') {
+        console.error('[RANKING] ERROR: playerName es ${safeName}, no se guardará');
+        return;
+      }
+      const val = field === 'utr' || field === 'ef'
+        ? parseFloat(rawValue)
+        : parseInt(rawValue);
+      if (isNaN(val)) return;
+      if (!manualRankingOrder[playerName]) manualRankingOrder[playerName] = {};
+      manualRankingOrder[playerName][field] = val;
+      // Mark as pending (not saved to MySQL yet)
+      if (!pendingRankingChanges[playerName]) pendingRankingChanges[playerName] = {};
+      pendingRankingChanges[playerName][field] = val;
+      // Si se editó PG o PP, recalcular EF% automáticamente en memoria
+      if (field === 'pg' || field === 'pp') {
+        const ovr = manualRankingOrder[playerName] || {};
+        const pg = field === 'pg' ? val : (ovr.pg !== undefined ? ovr.pg : null);
+        const pp = field === 'pp' ? val : (ovr.pp !== undefined ? ovr.pp : null);
+        const autoStats = computePlayerRankingStats(playerName);
+        const autoPg = autoStats.wins;
+        const autoPp = autoStats.losses;
+        const finalPg = pg !== null ? pg : autoPg;
+        const finalPp = pp !== null ? pp : autoPp;
+        const total = finalPg + finalPp;
+        if (total > 0) {
+          const newEf = parseFloat(((finalPg / total) * 100).toFixed(1));
+          manualRankingOrder[playerName]['ef'] = newEf;
+          pendingRankingChanges[playerName]['ef'] = newEf;
+        }
+      }
+      // Si se editó PTS, PG, PP, SG, SP o EF, recalcular UTR automáticamente en memoria.
+      // Fórmula proxy: mapea la eficiencia (PG/(PG+PP)) de escala 0-100% a escala 0-10 (UTR),
+      // con un pequeño ajuste por PTS relativo. No reemplaza el cálculo real basado en
+      // historial de partidos (calculateUTR); solo da una referencia editable manualmente.
+      if (['pts', 'pg', 'pp', 'sg', 'sp', 'ef'].includes(field)) {
+        const ovr = manualRankingOrder[playerName] || {};
+        const efForUtr = ovr.ef !== undefined ? ovr.ef : null;
+        if (efForUtr !== null) {
+          const ptsBonus = ovr.pts !== undefined ? Math.min(ovr.pts * 0.005, 1.0) : 0;
+          const newUtr = Math.max(0, Math.min(10, parseFloat(((efForUtr / 100) * 9 + ptsBonus).toFixed(2))));
+          manualRankingOrder[playerName]['utr'] = newUtr;
+          pendingRankingChanges[playerName]['utr'] = newUtr;
+        }
+      }
+      // Actualizar el botón visualmente
+      const btn = document.getElementById('btn-save-ranking');
+      if (btn) {
+        btn.style.background = '#16a34a';
+        const count = Object.keys(pendingRankingChanges).reduce((sum, name) => sum + Object.keys(pendingRankingChanges[name]).length, 0);
+        btn.innerHTML = '💾 Guardar cambios' + (count > 0 ? ' (' + count + ')' : '');
+      }
+      // Recalcular posiciones automáticamente basado en puntos mostrados
+      recalcRankingPositions();
+    }
+
+    async function resetManualRanking() {
+      if (!confirm('¿Restablecer todos los datos automáticos del ranking?')) return;
+      // Delete all ranking_override records from MySQL
+      for (const rec of allRankingOverrides) {
+        await window.dataSdk.delete(rec);
+      }
+      manualRankingOrder = {};
+      allRankingOverrides = [];
+      pendingRankingChanges = {};
+      showMessage('Ranking restablecido a datos automáticos', 'success');
+      render();
+    }
+
+    async function handleAddTournament(event) {
+      event.preventDefault();
+      if (!isAdminLoggedIn) {
+        showMessage('🔑 Debes iniciar sesión como administrador para crear torneos', 'error');
+        showAdminLoginModal();
+        return;
+      }
+      const nameInput = document.getElementById('new-tournament-name');
+      const name = nameInput ? nameInput.value.trim() : '';
+      if (!name) return;
+      const id = 'custom_' + Date.now();
+      await saveCustomTournamentToAPI({ id, name });
+      await loadCustomTournamentsFromAPI();
+      tournamentSettings[id + '_max'] = 10;
+      tournamentSettings[id + '_groups'] = 2;
+      await persistTournamentSettings();
+      showMessage('Torneo "' + name + '" creado correctamente', 'success');
+      render();
+    }
+
+    // ==================================================
+    // handleDeleteTournament con verificación de contraseña
+    // ==================================================
+    async function handleDeleteTournament(tournamentId, event) {
+      if (event) event.stopPropagation();
+      const tournament = getTournaments().find(t => t.id === tournamentId);
+      if (!tournament) return;
+
+      // Solicitar contraseña
+      const password = prompt('🔒 Ingresa la contraseña de administrador para eliminar el torneo "' + tournament.name + '":');
+      if (password === null) return; // Cancelado
+      if (password !== ADMIN_PASSWORD) {
+        alert('❌ Contraseña incorrecta. Eliminación cancelada.');
+        return;
+      }
+
+      if (!confirm('¿Eliminar el torneo "' + tournament.name + '"? Se eliminarán también todos sus jugadores y partidos.')) return;
+
+      const matchesToDelete = allMatches.filter(m => m.tournament_id === tournamentId);
+      const playersToDelete = allPlayers.filter(p => p.tournament_id === tournamentId);
+      const photosToDelete = allTournamentPhotos.filter(p => p.tournament_id === tournamentId);
+      for (const rec of matchesToDelete) await window.dataSdk.delete(rec);
+      for (const rec of playersToDelete) await window.dataSdk.delete(rec);
+      for (const rec of photosToDelete) await window.dataSdk.delete(rec);
+
+      if (tournament.isCustom) {
+        await deleteCustomTournamentFromAPI(tournamentId);
+      } else {
+        await window.dataSdk.create({ type: 'hidden_base_tournament', tournament_id: tournamentId });
+      }
+
+      showMessage('Torneo eliminado. Ranking actualizado automáticamente.', 'success');
+    }
+
+    // Agregar botón de Admin en cada vista
+    // Modificar el menú principal para incluir el botón de admin en torneos y jugadores
+    // Añadir el botón en la vista de torneos y jugadores
+
+    // Modificar la vista de torneos para incluir el botón de admin
+    // Modificar la vista de jugadores para incluir el botón de admin
+
+    // Sobrescribir la función render para agregar el botón de admin en las vistas correspondientes
+
+    // Cargar torneos personalizados ANTES de la primera carga de datos,
+    // para que el ranking sume desde el inicio los partidos de esos torneos.
+    loadCustomTournamentsFromAPI().then(() => init());
+  </script>
+</body>
+</html>
